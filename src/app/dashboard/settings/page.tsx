@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { buildUpiLink, getOnlinePaymentMode } from "@/lib/payments";
 import { qrDataUrl } from "@/lib/qr";
 import { PageHeader } from "@/components/ui";
+import { appUrl } from "@/lib/utils";
 import { GstForm, MenuSettingsForm, PaymentBasicsForm, ProfileForm, RazorpayForm } from "./forms";
 
 export const metadata = { title: "Settings" };
@@ -33,6 +34,7 @@ export default async function SettingsPage() {
       <MenuSettingsForm
         r={{
           qrOrderingEnabled: r.qrOrderingEnabled,
+          autoAcceptQrOrders: r.autoAcceptQrOrders,
           whatsappOrderingEnabled: r.whatsappOrderingEnabled,
           whatsappNumber: r.whatsappNumber ?? "",
           menuThemeColor: r.menuThemeColor,
@@ -57,7 +59,7 @@ export default async function SettingsPage() {
               upiPreview={upiPreview}
               r={{ upiId: r.upiId ?? "", upiPayeeName: r.upiPayeeName ?? "", acceptCash: r.acceptCash, acceptCard: r.acceptCard }}
             />
-            <RazorpayForm keyId={r.razorpayKeyId ?? ""} hasSecret={!!r.razorpayKeySecretEnc} hasWebhookSecret={!!r.razorpayWebhookSecretEnc} />
+            <RazorpayForm keyId={r.razorpayKeyId ?? ""} hasSecret={!!r.razorpayKeySecretEnc} hasWebhookSecret={!!r.razorpayWebhookSecretEnc} webhookUrl={appUrl(`/api/webhooks/razorpay/${r.id}`)} />
           </div>
         </>
       ) : (

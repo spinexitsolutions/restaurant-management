@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus, Search, ShoppingBag, X } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Minus, Plus, Search, ShoppingBag } from "lucide-react";
 import { FoodTypeIcon } from "@/components/ui";
-import { addToCart, buildCartLine, buildWhatsAppOrderText, lineLabel, setQuantity, validateAddons, type CartLine, type MenuItemData } from "@/lib/cart";
+import { Customizer, Sheet } from "@/components/item-customizer";
+import { addToCart, buildCartLine, buildWhatsAppOrderText, lineLabel, setQuantity, type CartLine, type MenuItemData } from "@/lib/cart";
 import { calculateBill, formatINR } from "@/lib/gst";
 import { cn } from "@/lib/utils";
+import { placeQrOrder } from "../actions";
 
 export interface MenuData {
   restaurant: {
@@ -15,15 +19,33 @@ export interface MenuData {
     address: string;
     themeColor: string;
     whatsappNumber: string | null;
+    qrOrderingEnabled: boolean;
     gstEnabled: boolean;
     gstMode: "INCLUSIVE" | "EXCLUSIVE";
     serviceChargeRate: number;
   };
   table: string | null;
+  tableToken: string | null;
   categories: { id: string; name: string; items: MenuItemData[] }[];
 }
 
 const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+export function activeOrderKey(slug: string, tableToken: string) {
+  return `order:${slug}:${tableToken}`;
+}
+
+/** Token of the order this phone placed at this table, so the customer can get back to tracking. */
+function useActiveOrder(slug: string, tableToken: string | null) {
+  const [token, setToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (!tableToken) return;
+    try {
+      setToken(localStorage.getItem(activeOrderKey(slug, tableToken)));
+    } catch {}
+  }, [slug, tableToken]);
+  return token;
+}
 
 function useStoredCart(key: string) {
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -51,6 +73,7 @@ export function MenuApp({ data }: { data: MenuData }) {
   const [customizing, setCustomizing] = useState<MenuItemData | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [cart, setCart] = useStoredCart(`cart:${restaurant.slug}`);
+  const activeOrder = useActiveOrder(restaurant.slug, data.tableToken);
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
   const categories = useMemo(() => {
@@ -121,6 +144,11 @@ export function MenuApp({ data }: { data: MenuData }) {
           <p className="mt-3 inline-block rounded-full px-3 py-1 text-sm font-semibold text-white" style={{ background: "var(--theme)" }}>
             Table {table}
           </p>
+        )}
+        {activeOrder && (
+          <Link href={`/m/${restaurant.slug}/o/${activeOrder}`} className="mt-3 ml-2 inline-block rounded-full bg-stone-900 px-3 py-1 text-sm font-semibold text-white">
+            Track your order →
+          </Link>
         )}
       </header>
 
@@ -262,117 +290,6 @@ function MenuItemRow({ item, qty, onAdd, onRemove }: { item: MenuItemData; qty: 
   );
 }
 
-function Sheet({ title, onClose, children, footer }: { title: string; onClose: () => void; children: React.ReactNode; footer: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50" onClick={onClose}>
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-t-2xl bg-white" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-stone-100 px-4 py-3">
-          <h2 className="font-bold">{title}</h2>
-          <button onClick={onClose} className="rounded-full p-1 hover:bg-stone-100" aria-label="Close">
-            <X size={20} />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
-        <div className="border-t border-stone-100 p-3">{footer}</div>
-      </div>
-    </div>
-  );
-}
-
-function Customizer({ item, onClose, onAdd }: { item: MenuItemData; onClose: () => void; onAdd: (line: CartLine) => void }) {
-  const [variantId, setVariantId] = useState<string | null>(item.variants[0]?.id ?? null);
-  const [addonIds, setAddonIds] = useState<string[]>([]);
-  const [qty, setQty] = useState(1);
-  const line = buildCartLine(item, variantId, addonIds);
-  const error = validateAddons(item, addonIds);
-
-  function toggle(groupId: string, optionId: string) {
-    const group = item.addonGroups.find((g) => g.id === groupId)!;
-    const groupIds = group.options.map((o) => o.id);
-    setAddonIds((ids) => {
-      if (ids.includes(optionId)) return ids.filter((x) => x !== optionId);
-      // Single-choice groups behave like radio buttons.
-      if (group.maxSelect === 1) return [...ids.filter((x) => !groupIds.includes(x)), optionId];
-      const selected = ids.filter((x) => groupIds.includes(x)).length;
-      return selected >= group.maxSelect ? ids : [...ids, optionId];
-    });
-  }
-
-  return (
-    <Sheet
-      title={item.name}
-      onClose={onClose}
-      footer={
-        <div className="flex gap-3">
-          <div className="flex items-center rounded-lg border border-stone-200">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="px-3 py-2" aria-label="Decrease">
-              <Minus size={16} />
-            </button>
-            <span className="w-6 text-center font-semibold">{qty}</span>
-            <button onClick={() => setQty((q) => q + 1)} className="px-3 py-2" aria-label="Increase">
-              <Plus size={16} />
-            </button>
-          </div>
-          <button
-            disabled={!!error}
-            onClick={() => onAdd({ ...line, quantity: qty })}
-            className="flex-1 rounded-lg py-2.5 font-semibold text-white disabled:opacity-50"
-            style={{ background: "var(--theme)" }}
-          >
-            {error ?? `Add item · ${rupees(line.unitPrice * qty)}`}
-          </button>
-        </div>
-      }
-    >
-      {item.variants.length > 0 && (
-        <fieldset className="mb-5">
-          <legend className="mb-2 font-semibold">Choose size</legend>
-          {item.variants.map((v) => (
-            <label key={v.id} className="flex items-center justify-between py-2">
-              <span className="flex items-center gap-3">
-                <input type="radio" name="variant" checked={variantId === v.id} onChange={() => setVariantId(v.id)} className="h-4 w-4" style={{ accentColor: "var(--theme)" }} />
-                {v.name}
-              </span>
-              <span className="text-sm">{rupees(v.price)}</span>
-            </label>
-          ))}
-        </fieldset>
-      )}
-      {item.addonGroups.map((g) => (
-        <fieldset key={g.id} className="mb-5">
-          <legend className="font-semibold">{g.name}</legend>
-          <p className="mb-2 text-xs text-stone-500">
-            {g.minSelect > 0 ? `Required · ` : "Optional · "}
-            {g.maxSelect === 1 ? "choose 1" : `up to ${g.maxSelect}`}
-          </p>
-          {g.options.map((o) => (
-            <label key={o.id} className="flex items-center justify-between py-2">
-              <span className="flex items-center gap-3">
-                <input
-                  type={g.maxSelect === 1 ? "radio" : "checkbox"}
-                  checked={addonIds.includes(o.id)}
-                  onChange={() => toggle(g.id, o.id)}
-                  onClick={(e) => {
-                    // Allow un-selecting an optional radio choice.
-                    if (g.maxSelect === 1 && addonIds.includes(o.id)) {
-                      e.preventDefault();
-                      toggle(g.id, o.id);
-                    }
-                  }}
-                  className="h-4 w-4"
-                  style={{ accentColor: "var(--theme)" }}
-                />
-                {o.name}
-              </span>
-              <span className="text-sm">{o.price ? `+ ${rupees(o.price)}` : "Free"}</span>
-            </label>
-          ))}
-        </fieldset>
-      ))}
-    </Sheet>
-  );
-}
-
 function CartSheet({
   data,
   cart,
@@ -386,7 +303,10 @@ function CartSheet({
   bill: ReturnType<typeof calculateBill>;
   onClose: () => void;
 }) {
-  const { restaurant, table } = data;
+  const { restaurant, table, tableToken } = data;
+  const router = useRouter();
+  const [placing, startPlacing] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const itemTotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
@@ -407,18 +327,56 @@ function CartSheet({
     window.open(`https://wa.me/91${restaurant.whatsappNumber}?text=${encodeURIComponent(text)}`, "_blank");
   }
 
+  const canPlace = restaurant.qrOrderingEnabled && !!tableToken;
+
+  function placeOrder() {
+    if (!tableToken) return;
+    setError(null);
+    startPlacing(async () => {
+      const res = await placeQrOrder({
+        slug: restaurant.slug,
+        tableToken,
+        customerName: name.trim() || undefined,
+        note: note.trim() || undefined,
+        lines: cart.map((l) => ({ itemId: l.itemId, variantId: l.variantId, addonIds: l.addonIds, quantity: l.quantity })),
+      });
+      if (!res.ok) return setError(res.error);
+      try {
+        localStorage.setItem(activeOrderKey(restaurant.slug, tableToken), res.data.token);
+      } catch {}
+      setCart([]);
+      router.push(`/m/${restaurant.slug}/o/${res.data.token}`);
+    });
+  }
+
   return (
     <Sheet
       title={table ? `Your order · Table ${table}` : "Your order"}
       onClose={onClose}
       footer={
-        restaurant.whatsappNumber ? (
-          <button onClick={orderOnWhatsApp} disabled={cart.length === 0} className="w-full rounded-lg bg-[#25D366] py-3 font-semibold text-white disabled:opacity-50">
-            Order on WhatsApp · {rupees(bill.grandTotal)}
-          </button>
-        ) : (
-          <p className="text-center text-sm text-stone-500">Show this order to your waiter.</p>
-        )
+        <div className="space-y-2">
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {canPlace && (
+            <button
+              onClick={placeOrder}
+              disabled={cart.length === 0 || placing}
+              className="w-full rounded-lg py-3 font-semibold text-white disabled:opacity-50"
+              style={{ background: "var(--theme)" }}
+            >
+              {placing ? "Placing order..." : `Place order · ${rupees(bill.grandTotal)}`}
+            </button>
+          )}
+          {restaurant.whatsappNumber && (
+            <button
+              onClick={orderOnWhatsApp}
+              disabled={cart.length === 0}
+              className={cn("w-full rounded-lg py-3 font-semibold disabled:opacity-50", canPlace ? "text-[#128C7E] ring-1 ring-[#25D366]" : "bg-[#25D366] text-white")}
+            >
+              Order on WhatsApp{!canPlace && ` · ${rupees(bill.grandTotal)}`}
+            </button>
+          )}
+          {!canPlace && !restaurant.whatsappNumber && <p className="text-center text-sm text-stone-500">Show this order to your waiter.</p>}
+        </div>
       }
     >
       {cart.length === 0 ? (

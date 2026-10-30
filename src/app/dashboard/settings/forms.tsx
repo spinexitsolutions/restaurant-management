@@ -74,12 +74,17 @@ export function ProfileForm({ r }: { r: Record<string, string> }) {
   );
 }
 
-export function MenuSettingsForm({ r }: { r: { qrOrderingEnabled: boolean; whatsappOrderingEnabled: boolean; whatsappNumber: string; menuThemeColor: string } }) {
+export function MenuSettingsForm({ r }: { r: { qrOrderingEnabled: boolean; autoAcceptQrOrders: boolean; whatsappOrderingEnabled: boolean; whatsappNumber: string; menuThemeColor: string } }) {
   const [state, action] = useActionState(saveMenuSettings, null);
   return (
     <Section title="Customer QR menu" description="How customers order after scanning the table QR.">
       <form action={action} className="space-y-4">
         <Toggle name="qrOrderingEnabled" label="Customers can place orders from the QR menu" defaultChecked={r.qrOrderingEnabled} />
+        <Toggle
+          name="autoAcceptQrOrders"
+          label="Send QR orders straight to the kitchen (otherwise a waiter accepts them first)"
+          defaultChecked={r.autoAcceptQrOrders}
+        />
         <Toggle name="whatsappOrderingEnabled" label="Show 'Order on WhatsApp' button" defaultChecked={r.whatsappOrderingEnabled} />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="WhatsApp number for orders" hint="The customer's order message is sent to this number">
@@ -153,7 +158,7 @@ export function GstForm({
             <Input name="serviceChargeRate" type="number" min={0} max={20} step="0.5" defaultValue={r.serviceChargeRate} onChange={(e) => setPreview((p) => ({ ...p, scRate: e.target.value }))} />
           </Field>
           <Field label="Invoice number prefix">
-            <Input name="invoicePrefix" defaultValue={r.invoicePrefix} maxLength={10} className="uppercase" />
+            <Input name="invoicePrefix" defaultValue={r.invoicePrefix} maxLength={5} className="uppercase" />
           </Field>
         </div>
 
@@ -245,7 +250,7 @@ export function PaymentBasicsForm({
   );
 }
 
-export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret }: { keyId: string; hasSecret: boolean; hasWebhookSecret: boolean }) {
+export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret, webhookUrl }: { keyId: string; hasSecret: boolean; hasWebhookSecret: boolean; webhookUrl: string }) {
   const [state, action] = useActionState(saveRazorpay, null);
   const [removeState, setRemoveState] = useState<{ error?: string; ok?: string } | null>(null);
   const [pending, start] = useTransition();
@@ -275,6 +280,9 @@ export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret }: { keyId: st
         </Field>
         <p className="text-xs text-stone-500">
           Find your keys in Razorpay Dashboard → Account &amp; Settings → API Keys. Secrets are stored encrypted.
+        </p>
+        <p className="text-xs text-stone-500">
+          Webhook URL (event <code>payment.captured</code>): <code className="rounded bg-stone-100 px-1 break-all">{webhookUrl}</code>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton pendingText="Verifying...">{connected ? "Update keys" : "Connect Razorpay"}</SubmitButton>

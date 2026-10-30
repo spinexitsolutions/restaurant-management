@@ -19,10 +19,28 @@ QR menu, WhatsApp ordering, POS billing, kitchen and waiter panels with GST invo
 | Super admin | `/admin`: list all restaurants, suspend/activate |
 | GST engine | `src/lib/gst.ts`: paise-accurate CGST/SGST, inclusive/exclusive, proportional discounts, taxed service charge, round-off (unit tested) |
 
+## What's built (Phase 2): ordering to billing
+
+| Area | Features |
+|---|---|
+| Customer QR ordering | Customer places the order from the table QR. Staff accepts it first (or turn on auto-accept). Live tracking page with item status, **Order more**, **Call waiter**, **Water** and **Get the bill** |
+| Waiter (`/dashboard/waiter`) | Mobile table map (free / running / bill printed), alerts for new QR orders, ready food and customer requests, take orders, accept/reject, mark served |
+| Kitchen display (`/dashboard/kitchen`) | Dark TV-friendly KOT board, per-item New → Cooking → Ready, colour timer (10/20 min), kitchen notes, sound alert |
+| POS (`/dashboard/pos`) | Table map, takeaway and delivery orders, today's sales, discount (% or ₹), generate bill, reopen bill, cancel items/orders with reason |
+| GST invoice | 80 mm thermal-friendly tax invoice with GSTIN, FSSAI, SAC 996331 and rate-wise CGST/SGST. Invoice numbers run per financial year (`INV/26-27/0001`). Print, or share a public link on WhatsApp |
+| Payments | Cash (with change calculator), UPI QR with the bill amount, card, other. Split payments. Customers can pay from their phone with a UPI QR, or with Razorpay Checkout once keys are saved. Signature-verified, amount taken from Razorpay, webhook for closed tabs, no double-counting |
+| Orders (`/dashboard/orders`) | Day-wise order history with status filter and collection by payment method |
+| Live updates | Every screen polls a per-restaurant change counter every 2–5 s and refreshes when something changes. Works on any host with no extra services |
+
+Staff land on their own screen after login: chef → Kitchen, waiter → Tables, cashier → POS.
+
+### Razorpay webhook (optional but recommended)
+
+In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razorpay/<restaurantId>` (shown in Settings → Razorpay) for the `payment.captured` event, and paste the same secret in Settings. Payments then get recorded even if the customer closes the page.
+
 ## Roadmap
 
-- **Phase 2:** QR in-app ordering → Kitchen Display (realtime) → Waiter app → POS billing → GST invoice (print/PDF/WhatsApp) → payments (UPI QR / Razorpay checkout, split payments)
-- **Phase 3:** Offline POS (PWA), split/merge tables, discounts with approval, reports, day-end closing
+- **Phase 3:** Offline POS (PWA), split/merge/transfer tables, manager PIN for discounts and cancellations, reports and day-end closing, photo upload
 - **Phase 4:** Inventory & recipes, CRM & loyalty, reservations, attendance
 - **Phase 5:** Multi-outlet, subscription billing, aggregator integrations, AI insights
 
@@ -53,7 +71,7 @@ Note: free Supabase projects pause after a period of inactivity. Use a paid plan
 | Command | Purpose |
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js |
-| `npm test` | Unit tests (GST, cart, payments) |
+| `npm test` | Unit tests, plus order lifecycle integration tests when `DATABASE_URL` is set |
 | `npm run typecheck` / `lint` | Static checks |
 | `npm run db:migrate` / `db:deploy` / `db:seed` / `db:studio` | Database |
 

@@ -18,6 +18,8 @@ export interface MenuItemData {
 export interface CartLine {
   key: string; // item + variant + addons, so identical customisations merge
   itemId: string;
+  variantId: string | null;
+  addonIds: string[];
   name: string;
   variantName: string | null;
   addons: { name: string; price: number }[];
@@ -33,6 +35,8 @@ export function buildCartLine(item: MenuItemData, variantId: string | null, addo
   return {
     key: [item.id, variant?.id ?? "", ...options.map((o) => o.id).sort()].join("|"),
     itemId: item.id,
+    variantId: variant?.id ?? null,
+    addonIds: options.map((o) => o.id),
     name: item.name,
     variantName: variant?.name ?? null,
     addons: options.map((o) => ({ name: o.name, price: o.price })),

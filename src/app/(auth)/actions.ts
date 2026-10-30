@@ -96,7 +96,13 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
 
   await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await createSession({ userId: user.id, restaurantId: user.restaurantId, role: user.role, name: user.name });
-  redirect(user.role === "SUPER_ADMIN" ? "/admin" : "/dashboard");
+  const home: Record<string, string> = {
+    SUPER_ADMIN: "/admin",
+    CHEF: "/dashboard/kitchen",
+    WAITER: "/dashboard/waiter",
+    CASHIER: "/dashboard/pos",
+  };
+  redirect(home[user.role] ?? "/dashboard");
 }
 
 export async function logout() {

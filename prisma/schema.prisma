@@ -38,6 +38,54 @@ enum TableStatus {
   CLEANING
 }
 
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderSource {
+  QR
+  STAFF
+}
+
+// OPEN: taking orders -> BILLED: invoice generated, awaiting payment -> PAID: closed
+enum OrderStatus {
+  OPEN
+  BILLED
+  PAID
+  CANCELLED
+}
+
+// PENDING_APPROVAL only for customer QR orders until staff accepts them
+enum KotStatus {
+  PENDING_APPROVAL
+  ACCEPTED
+  REJECTED
+}
+
+enum ItemStatus {
+  NEW
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  UPI
+  CARD
+  RAZORPAY
+  OTHER
+}
+
+enum ServiceRequestType {
+  CALL_WAITER
+  REQUEST_BILL
+  WATER
+}
+
 enum Plan {
   TRIAL
   BASIC
@@ -81,6 +129,16 @@ model Restaurant {
   whatsappOrderingEnabled Boolean @default(true)
   qrOrderingEnabled       Boolean @default(true)
   menuThemeColor          String  @default("#ea580c")
+  autoAcceptQrOrders      Boolean @default(false)
+
+  // Daily counters (reset each day, IST) and financial-year invoice series
+  orderSeqDate    String?
+  nextOrderNumber Int     @default(1)
+  nextKotNumber   Int     @default(1)
+  invoiceSeqFy    String?
+
+  // Bumped on every order/kitchen change; panels poll it to refresh in near real time.
+  liveVersion Int @default(0)
 
   // SaaS subscription
   plan          Plan      @default(TRIAL)
@@ -94,6 +152,9 @@ model Restaurant {
   categories Category[]
   menuItems  MenuItem[]
   tables     DiningTable[]
+  orders     Order[]
+  kots       Kot[]
+  requests   ServiceRequest[]
 }
 
 model User {
@@ -109,6 +170,7 @@ model User {
   lastLoginAt  DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  orders       Order[]     @relation("OrderWaiter")
 
   @@index([restaurantId])
 }
@@ -202,7 +264,130 @@ model DiningTable {
   sortOrder    Int         @default(0)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  orders       Order[]
+  requests     ServiceRequest[]
 
   @@unique([restaurantId, name])
   @@index([restaurantId])
+}
+
+model Order {
+  id           String       @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderNumber  Int // daily running number, shown as token for takeaway
+  publicToken  String       @unique @default(cuid()) // lets the customer track/pay without logging in
+  type         OrderType    @default(DINE_IN)
+  source       OrderSource  @default(STAFF)
+  status       OrderStatus  @default(OPEN)
+  tableId      String?
+  table        DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  tableName    String? // snapshot, survives table rename/delete
+  waiterId     String?
+  waiter       User?        @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
+  customerName  String?
+  customerPhone String?
+  note          String?
+
+  discountType  String? // PERCENT | FLAT
+  discountValue Decimal? @db.Decimal(10, 2) // percent, or rupees for FLAT
+  discountNote  String?
+
+  // Frozen when the bill is generated
+  invoiceNumber     String?
+  gstEnabled        Boolean?
+  gstMode           GstMode?
+  serviceChargeRate Decimal? @db.Decimal(5, 2)
+  subtotal          Decimal? @db.Decimal(10, 2)
+  discountAmount    Decimal? @db.Decimal(10, 2)
+  serviceCharge     Decimal? @db.Decimal(10, 2)
+  cgst              Decimal? @db.Decimal(10, 2)
+  sgst              Decimal? @db.Decimal(10, 2)
+  roundOff          Decimal? @db.Decimal(10, 2)
+  grandTotal        Decimal? @db.Decimal(10, 2)
+
+  cancelReason String?
+  billedAt     DateTime?
+  paidAt       DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  items    OrderItem[]
+  kots     Kot[]
+  payments Payment[]
+
+  @@unique([restaurantId, invoiceNumber])
+  @@index([restaurantId, status])
+  @@index([restaurantId, createdAt])
+  @@index([tableId, status])
+}
+
+// Kitchen Order Ticket: one batch of items sent to the kitchen together.
+model Kot {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kotNumber    Int
+  status       KotStatus  @default(ACCEPTED)
+  note         String?
+  createdById  String? // null when placed by the customer
+  createdAt    DateTime   @default(now())
+  items        OrderItem[]
+
+  @@index([restaurantId, status, createdAt])
+  @@index([orderId])
+}
+
+model OrderItem {
+  id           String     @id @default(cuid())
+  orderId      String
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  kotId        String
+  kot          Kot        @relation(fields: [kotId], references: [id], onDelete: Cascade)
+  menuItemId   String?
+  name         String
+  variantName  String?
+  addons       Json       @default("[]") // [{name, price}] in rupees
+  foodType     FoodType   @default(VEG)
+  unitPrice    Decimal    @db.Decimal(10, 2) // variant/base + add-ons
+  quantity     Int
+  gstRate      Decimal    @db.Decimal(5, 2)
+  note         String?
+  status       ItemStatus @default(NEW)
+  cancelReason String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([orderId])
+  @@index([kotId])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method            PaymentMethod
+  amount            Decimal       @db.Decimal(10, 2)
+  reference         String?
+  razorpayOrderId   String?
+  razorpayPaymentId String?       @unique
+  receivedById      String?
+  createdAt         DateTime      @default(now())
+
+  @@index([orderId])
+}
+
+model ServiceRequest {
+  id           String             @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableId      String
+  table        DiningTable        @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  type         ServiceRequestType
+  resolvedAt   DateTime?
+  createdAt    DateTime           @default(now())
+
+  @@index([restaurantId, resolvedAt])
 }

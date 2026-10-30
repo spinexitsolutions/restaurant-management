@@ -47,7 +47,7 @@ const gstSchema = z.object({
   defaultGstRate: z.coerce.number().min(0).max(28),
   serviceChargeEnabled: checkbox,
   serviceChargeRate: z.coerce.number().min(0, "Service charge can't be negative").max(20, "Service charge can be at most 20%"),
-  invoicePrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9/-]{1,10}$/, "Invoice prefix: up to 10 letters, numbers, / or -"),
+  invoicePrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{1,5}$/, "Invoice prefix: up to 5 letters or numbers (GST invoice numbers are limited to 16 characters)"),
 });
 
 export async function saveGst(_: FormState, formData: FormData): Promise<FormState> {
@@ -121,6 +121,7 @@ export async function removeRazorpay(): Promise<FormState> {
 
 const menuSchema = z.object({
   qrOrderingEnabled: checkbox,
+  autoAcceptQrOrders: checkbox,
   whatsappOrderingEnabled: checkbox,
   whatsappNumber: z.union([z.literal(""), z.string().trim().regex(/^[6-9]\d{9}$/, "WhatsApp number must be a 10-digit mobile number")]).transform((s) => s || null),
   menuThemeColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Pick a valid colour"),

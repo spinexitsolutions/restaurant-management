@@ -11,14 +11,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     where: { id: session.restaurantId },
     select: { name: true, plan: true, planExpiresAt: true },
   });
-  const isManager = session.role === "OWNER" || session.role === "MANAGER";
-
+  const role = session.role;
+  const can = (roles: string[]) => roles.includes(role);
   const items: NavItem[] = [
     { href: "/dashboard", label: "Overview", icon: "LayoutDashboard" },
-    { href: "/dashboard/pos", label: "POS Billing", icon: "Receipt", soon: true },
-    { href: "/dashboard/kitchen", label: "Kitchen", icon: "ChefHat", soon: true },
-    { href: "/dashboard/waiter", label: "Waiter", icon: "UserRound", soon: true },
-    ...(isManager
+    ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/pos", label: "POS Billing", icon: "Receipt" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CASHIER", "WAITER"]) ? [{ href: "/dashboard/waiter", label: "Tables", icon: "UserRound" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CHEF"]) ? [{ href: "/dashboard/kitchen", label: "Kitchen", icon: "ChefHat" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/orders", label: "Orders", icon: "ClipboardList" } as const] : []),
+    ...(can(["OWNER", "MANAGER"])
       ? ([
           { href: "/dashboard/menu", label: "Menu", icon: "UtensilsCrossed" },
           { href: "/dashboard/tables", label: "Tables & QR", icon: "QrCode" },
