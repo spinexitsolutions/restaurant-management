@@ -4,6 +4,10 @@ import { requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getOnlinePaymentMode } from "@/lib/payments";
 import { Card, PageHeader } from "@/components/ui";
+import { ClockButton } from "@/components/clock-button";
+import { daysUntil } from "@/lib/crm";
+import { istDate } from "@/lib/numbering";
+import { istDateTime } from "@/server/reservations";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ denied?: string }> }) {
   const session = await requireRestaurantSession();
@@ -17,6 +21,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   ]);
 
   const paymentMode = getOnlinePaymentMode(restaurant);
+  const today = istDate();
+  const [ingredients, bookings, dated] = await Promise.all([
+    db.ingredient.findMany({ where: { restaurantId: session.restaurantId, isActive: true }, select: { name: true, currentStock: true, lowStockLevel: true } }),
+    db.reservation.findMany({
+      where: { restaurantId: session.restaurantId, status: { in: ["REQUESTED", "CONFIRMED"] }, startsAt: { gte: istDateTime(today, "00:00"), lt: istDateTime(today, "23:59") } },
+      select: { partySize: true, status: true },
+    }),
+    db.customer.findMany({ where: { restaurantId: session.restaurantId, OR: [{ birthday: { not: null } }, { anniversary: { not: null } }] }, select: { birthday: true, anniversary: true } }),
+  ]);
+  const lowStock = ingredients.filter((i) => Number(i.currentStock) <= Number(i.lowStockLevel));
+  const celebrations = dated.filter((c) => [c.birthday, c.anniversary].some((d) => d && daysUntil(d, today) <= 7)).length;
   const checklist = [
     { done: itemCount > 0, label: "Add your menu items", href: "/dashboard/menu" },
     { done: tableCount > 0, label: "Create tables and print QR codes", href: "/dashboard/tables" },
@@ -31,6 +46,36 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <PageHeader title={`Namaste, ${session.name.split(" ")[0]} 👋`} description="Here's how your restaurant is set up." />
       {denied && (
         <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">You don&apos;t have access to that page.</p>
+      )}
+
+      <Card className="mb-6 py-3">
+        <ClockButton userId={session.userId} />
+      </Card>
+
+      {(lowStock.length > 0 || bookings.length > 0 || celebrations > 0) && (
+        <div className="mb-6 grid gap-3 md:grid-cols-3">
+          {lowStock.length > 0 && isManager && (
+            <Link href="/dashboard/inventory" className="rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+              <p className="font-semibold">{lowStock.length} ingredient(s) running low</p>
+              <p className="truncate">{lowStock.map((i) => i.name).join(", ")}</p>
+            </Link>
+          )}
+          {bookings.length > 0 && (
+            <Link href="/dashboard/reservations" className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-200">
+              <p className="font-semibold">{bookings.length} booking(s) today</p>
+              <p>
+                {bookings.reduce((s, b) => s + b.partySize, 0)} guests
+                {bookings.some((b) => b.status === "REQUESTED") && " · some need confirming"}
+              </p>
+            </Link>
+          )}
+          {celebrations > 0 && session.role !== "WAITER" && session.role !== "CHEF" && (
+            <Link href="/dashboard/customers" className="rounded-xl bg-pink-50 p-4 text-sm text-pink-900 ring-1 ring-pink-200">
+              <p className="font-semibold">🎂 {celebrations} birthday/anniversary this week</p>
+              <p>Send them an offer on WhatsApp</p>
+            </Link>
+          )}
+        </div>
       )}
 
       <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">

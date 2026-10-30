@@ -1,10 +1,12 @@
 import "server-only";
-import type { KotStatus, OrderSource, OrderType, Prisma, Role } from "@prisma/client";
+import type { KotStatus, Order, OrderSource, OrderType, Prisma, Role } from "@prisma/client";
 import { db } from "@/lib/db";
 import { buildCartLine, validateAddons, type MenuItemData } from "@/lib/cart";
 import { toPaise } from "@/lib/gst";
 import { formatInvoiceNumber, financialYear, istDate } from "@/lib/numbering";
 import { orderBill, paiseToRupees } from "@/lib/order-bill";
+import { onBilled, onPaid, refundPoints } from "./customers";
+import { consumeItems, returnItems } from "./inventory";
 
 type Tx = Prisma.TransactionClient;
 
@@ -97,6 +99,7 @@ async function resolveLines(tx: Tx, restaurantId: string, defaultGstRate: number
     const line = buildCartLine(data, input.variantId, addonIds);
     return {
       menuItemId: item.id,
+      variantId: line.variantId,
       name: item.name,
       variantName: line.variantName,
       addons: line.addons.map((a) => ({ name: a.name, price: Number(paiseToRupees(a.price)) })),
@@ -190,6 +193,7 @@ export async function placeItems(input: PlaceItemsInput) {
         items: { create: items.map((i) => ({ ...i, orderId: order!.id })) },
       },
     });
+    if (input.kotStatus === "ACCEPTED") await consumeItems(tx, input.restaurantId, { kotId: kot.id });
     await bumpLive(tx, input.restaurantId);
     return { order, kot };
   });
@@ -201,6 +205,7 @@ export async function decideKot(restaurantId: string, kotId: string, accept: boo
     if (!kot) throw new OrderError("Order not found");
     if (kot.status !== "PENDING_APPROVAL") throw new OrderError("This order was already handled");
     await tx.kot.update({ where: { id: kotId }, data: { status: accept ? "ACCEPTED" : "REJECTED" } });
+    if (accept) await consumeItems(tx, restaurantId, { kotId });
     if (!accept) {
       await tx.orderItem.updateMany({ where: { kotId }, data: { status: "CANCELLED", cancelReason: "Rejected by staff" } });
       // A customer order that was only ever this rejected KOT should not keep the table busy.
@@ -236,6 +241,8 @@ export async function cancelItem(restaurantId: string, itemId: string, reason: s
     if (role === "WAITER" && item.status !== "NEW") throw new OrderError("The kitchen has started this item. Ask the manager or cashier to cancel it.");
     if (item.status !== "NEW" && reason.trim().length < 3) throw new OrderError("Enter a reason for cancelling");
     await tx.orderItem.update({ where: { id: itemId }, data: { status: "CANCELLED", cancelReason: reason.trim() || "Cancelled" } });
+    // Food the kitchen hadn't started goes back into stock; started food counts as used.
+    if (item.status === "NEW") await returnItems(tx, restaurantId, [itemId]);
     await bumpLive(tx, restaurantId);
   });
 }
@@ -270,7 +277,12 @@ export async function generateBill(restaurantId: string, orderId: string) {
 
     const r = await tx.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
     const serviceChargeRate = r.serviceChargeEnabled ? r.serviceChargeRate : 0;
-    const bill = orderBill(billable, { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate }, { type: order.discountType, value: order.discountValue });
+    const bill = orderBill(
+      billable,
+      { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate },
+      { type: order.discountType, value: order.discountValue },
+      toPaise(order.pointsRedeemValue),
+    );
 
     const updated = await tx.order.update({
       where: { id: orderId },
@@ -293,6 +305,7 @@ export async function generateBill(restaurantId: string, orderId: string) {
     if (order.tableId) {
       await tx.serviceRequest.updateMany({ where: { tableId: order.tableId, type: "REQUEST_BILL", resolvedAt: null }, data: { resolvedAt: new Date() } });
     }
+    await onBilled(tx, updated);
     await bumpLive(tx, restaurantId);
     return updated;
   });
@@ -306,6 +319,7 @@ export async function reopenBill(restaurantId: string, orderId: string) {
     if (order.status !== "BILLED") throw new OrderError("Only a billed order can be reopened");
     if (order._count.payments > 0) throw new OrderError("A payment is already recorded on this bill");
     await tx.order.update({ where: { id: orderId }, data: { status: "OPEN", billedAt: null } });
+    await refundPoints(tx, order);
     await bumpLive(tx, restaurantId);
   });
 }
@@ -352,10 +366,11 @@ export async function recordPayment(
         clientRequestId: payment.clientRequestId,
       },
     });
-    const updated =
-      paid + payment.amountPaise >= total
-        ? await tx.order.update({ where: { id: orderId }, data: { status: "PAID", paidAt: new Date() } })
-        : order;
+    let updated: Order = order;
+    if (paid + payment.amountPaise >= total) {
+      updated = await tx.order.update({ where: { id: orderId }, data: { status: "PAID", paidAt: new Date() } });
+      await onPaid(tx, updated);
+    }
     await bumpLive(tx, restaurantId);
     return updated;
   });
@@ -368,8 +383,11 @@ export async function cancelOrder(restaurantId: string, orderId: string, reason:
     if (order.status === "PAID" || order.status === "CANCELLED") throw new OrderError("This order is already closed");
     if (order._count.payments > 0) throw new OrderError("A payment is recorded on this order");
     if (reason.trim().length < 3) throw new OrderError("Enter a reason for cancelling");
+    const unstarted = await tx.orderItem.findMany({ where: { orderId, status: "NEW" }, select: { id: true } });
+    await returnItems(tx, restaurantId, unstarted.map((i) => i.id));
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelReason: reason.trim() } });
     await tx.orderItem.updateMany({ where: { orderId, status: { not: "CANCELLED" } }, data: { status: "CANCELLED", cancelReason: "Order cancelled" } });
+    await refundPoints(tx, order);
     await tx.kot.updateMany({ where: { orderId, status: "PENDING_APPROVAL" }, data: { status: "REJECTED" } });
     await bumpLive(tx, restaurantId);
   });
@@ -426,8 +444,8 @@ export async function mergeOrders(restaurantId: string, targetId: string, source
       if (o.status !== "OPEN") throw new OrderError(`Order #${o.orderNumber} is already billed. Reopen it first.`);
       if (o._count.payments > 0) throw new OrderError(`Order #${o.orderNumber} has a payment recorded`);
     }
-    // The source's discount would silently disappear, so make staff decide explicitly.
-    if (source.discountValue && Number(source.discountValue) > 0) {
+    // The source's discount or points would silently disappear, so make staff decide explicitly.
+    if ((source.discountValue && Number(source.discountValue) > 0) || source.pointsRedeemed > 0) {
       throw new OrderError(`Order #${source.orderNumber} has a discount. Remove it first, then merge and apply the discount again.`);
     }
     await tx.kot.updateMany({ where: { orderId: sourceId }, data: { orderId: targetId } });
@@ -450,6 +468,7 @@ export async function splitOrder(restaurantId: string, orderId: string, parts: {
   return db.$transaction(async (tx) => {
     const order = await lockedRunningOrder(tx, restaurantId, orderId);
     if (order.status !== "OPEN") throw new OrderError("Reopen the bill before splitting");
+    if (order.pointsRedeemed > 0) throw new OrderError("Remove the loyalty points from this bill before splitting");
     const items = await tx.orderItem.findMany({ where: { orderId, status: { not: "CANCELLED" }, kot: { status: "ACCEPTED" } } });
     const byId = new Map(items.map((i) => [i.id, i]));
     const chosen = parts.filter((p) => p.quantity > 0);
@@ -497,11 +516,64 @@ export async function splitOrder(restaurantId: string, orderId: string, parts: {
             gstRate: item.gstRate,
             note: item.note,
             status: item.status,
+            variantId: item.variantId,
+            stockDeducted: item.stockDeducted,
           },
         });
       }
     }
     await bumpLive(tx, restaurantId);
     return split;
+  });
+}
+
+/** Links a customer (by mobile) to a running order. */
+export async function setOrderCustomer(restaurantId: string, orderId: string, phone: string, name: string) {
+  const { upsertCustomer } = await import("./customers");
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, restaurantId } });
+    if (!order) throw new OrderError("Order not found");
+    if (order.status !== "OPEN") throw new OrderError("Reopen the bill to change the customer");
+    if (!phone) {
+      if (order.pointsRedeemed > 0) throw new OrderError("Remove the redeemed points first");
+      await tx.order.update({ where: { id: orderId }, data: { customerId: null, customerPhone: null } });
+    } else {
+      const customer = await upsertCustomer(tx, restaurantId, phone, name.trim() || order.customerName);
+      if (order.pointsRedeemed > 0 && order.customerId !== customer.id) throw new OrderError("Remove the redeemed points before changing the customer");
+      await tx.order.update({
+        where: { id: orderId },
+        data: { customerId: customer.id, customerPhone: phone, customerName: customer.name ?? order.customerName },
+      });
+    }
+    await bumpLive(tx, restaurantId);
+  });
+}
+
+/** Applies (or with 0, removes) loyalty points as a discount on a running order. */
+export async function redeemPoints(restaurantId: string, orderId: string, points: number) {
+  const { checkRedemption, redeemValuePaise } = await import("@/lib/loyalty");
+  const { loyaltySettings } = await import("./customers");
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, restaurantId }, include: { items: { include: { kot: { select: { status: true } } } }, customer: true } });
+    if (!order) throw new OrderError("Order not found");
+    if (order.status !== "OPEN") throw new OrderError("Reopen the bill to change points");
+    if (points === 0) {
+      await tx.order.update({ where: { id: orderId }, data: { pointsRedeemed: 0, pointsRedeemValue: 0 } });
+      await bumpLive(tx, restaurantId);
+      return;
+    }
+    const r = await tx.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
+    if (!r.loyaltyEnabled) throw new OrderError("Loyalty points are turned off");
+    if (!order.customer) throw new OrderError("Add the customer's mobile number first");
+    const s = loyaltySettings(r);
+    const before = orderBill(
+      order.items.filter((i) => i.kot.status === "ACCEPTED"),
+      { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled ? r.serviceChargeRate : 0 },
+      { type: order.discountType, value: order.discountValue },
+    );
+    const error = checkRedemption(points, order.customer.points, before.subtotal - before.discount, s);
+    if (error) throw new OrderError(error);
+    await tx.order.update({ where: { id: orderId }, data: { pointsRedeemed: points, pointsRedeemValue: paiseToRupees(redeemValuePaise(points, s)) } });
+    await bumpLive(tx, restaurantId);
   });
 }

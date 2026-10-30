@@ -11,6 +11,7 @@ const base: Omit<ReportOrder, "id" | "items" | "payments" | "billedAt"> = {
   serviceChargeRate: 0,
   discountType: null,
   discountValue: null,
+  pointsValue: 0,
   subtotal: 0,
   discount: 0,
   serviceCharge: 0,

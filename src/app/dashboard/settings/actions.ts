@@ -138,3 +138,20 @@ export async function saveMenuSettings(_: FormState, formData: FormData): Promis
   await db.restaurant.update({ where: { id: restaurantId }, data: parsed.data });
   return done("Customer menu settings saved");
 }
+
+const loyaltySchema = z.object({
+  loyaltyEnabled: checkbox,
+  loyaltyEarnPer100: z.coerce.number().min(0).max(100, "Earn rate can be at most 100 points per ₹100"),
+  loyaltyPointValue: z.coerce.number().min(0.01, "A point must be worth at least ₹0.01").max(100),
+  loyaltyMinRedeem: z.coerce.number().int().min(1).max(100000),
+  birthdayOfferText: z.string().trim().min(5, "Write an offer message").max(500),
+  reservationsEnabled: checkbox,
+});
+
+export async function saveLoyalty(_: FormState, formData: FormData): Promise<FormState> {
+  const { restaurantId } = await requireRestaurantSession(["OWNER"]);
+  const parsed = loyaltySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await db.restaurant.update({ where: { id: restaurantId }, data: parsed.data });
+  return done("Customer settings saved");
+}

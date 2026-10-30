@@ -20,6 +20,7 @@ export interface MenuData {
     themeColor: string;
     whatsappNumber: string | null;
     qrOrderingEnabled: boolean;
+    reservationsEnabled: boolean;
     gstEnabled: boolean;
     gstMode: "INCLUSIVE" | "EXCLUSIVE";
     serviceChargeRate: number;
@@ -144,6 +145,11 @@ export function MenuApp({ data }: { data: MenuData }) {
           <p className="mt-3 inline-block rounded-full px-3 py-1 text-sm font-semibold text-white" style={{ background: "var(--theme)" }}>
             Table {table}
           </p>
+        )}
+        {!table && restaurant.reservationsEnabled && (
+          <Link href={`/m/${restaurant.slug}/book`} className="mt-3 inline-block rounded-full px-3 py-1 text-sm font-semibold ring-1 ring-stone-300">
+            Book a table
+          </Link>
         )}
         {activeOrder && (
           <Link href={`/m/${restaurant.slug}/o/${activeOrder}`} className="mt-3 ml-2 inline-block rounded-full bg-stone-900 px-3 py-1 text-sm font-semibold text-white">

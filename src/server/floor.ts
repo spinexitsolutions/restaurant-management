@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { billFor } from "./order-view";
+import { upcomingByTable } from "./reservations";
 
 export interface FloorOrder {
   id: string;
@@ -22,12 +23,13 @@ export interface FloorTable {
   area: string;
   capacity: number;
   order: FloorOrder | null;
+  reservation: { name: string; partySize: number; startsAt: string } | null;
   requests: { id: string; type: "CALL_WAITER" | "REQUEST_BILL" | "WATER"; createdAt: string }[];
 }
 
 /** Live state of every table plus running takeaway/delivery orders. */
 export async function getFloor(restaurantId: string) {
-  const [restaurant, tables, orders, requests] = await Promise.all([
+  const [restaurant, tables, orders, requests, reserved] = await Promise.all([
     db.restaurant.findUniqueOrThrow({ where: { id: restaurantId } }),
     db.diningTable.findMany({ where: { restaurantId }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     db.order.findMany({
@@ -36,6 +38,7 @@ export async function getFloor(restaurantId: string) {
       include: { kots: { include: { items: true } }, payments: true },
     }),
     db.serviceRequest.findMany({ where: { restaurantId, resolvedAt: null }, orderBy: { createdAt: "asc" } }),
+    upcomingByTable(restaurantId),
   ]);
 
   const summarize = (o: (typeof orders)[number]): FloorOrder => {
@@ -47,7 +50,7 @@ export async function getFloor(restaurantId: string) {
       type: o.type,
       customerName: o.customerName,
       tableName: o.tableName,
-      total: billFor({ ...o, kots: o.kots, payments: o.payments }, restaurant).grandTotal,
+      total: billFor(o, restaurant).grandTotal,
       itemCount: live.reduce((s, i) => s + i.quantity, 0),
       readyCount: live.filter((i) => i.status === "READY").length,
       pendingApproval: o.kots.filter((k) => k.status === "PENDING_APPROVAL").length,
@@ -62,6 +65,7 @@ export async function getFloor(restaurantId: string) {
     area: t.area ?? "Main",
     capacity: t.capacity,
     order: byTable.get(t.id) ?? null,
+    reservation: reserved.get(t.id) ?? null,
     requests: requests.filter((r) => r.tableId === t.id).map((r) => ({ id: r.id, type: r.type, createdAt: r.createdAt.toISOString() })),
   }));
 

@@ -32,6 +32,7 @@ export default async function CustomerMenuPage({ params, searchParams }: Props) 
       themeColor: r.menuThemeColor,
       whatsappNumber: r.whatsappOrderingEnabled ? r.whatsappNumber : null,
       qrOrderingEnabled: r.qrOrderingEnabled,
+      reservationsEnabled: r.reservationsEnabled,
       gstEnabled: r.gstEnabled,
       gstMode: r.gstMode,
       serviceChargeRate: r.serviceChargeEnabled ? Number(r.serviceChargeRate) : 0,

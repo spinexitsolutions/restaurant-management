@@ -1,6 +1,7 @@
 // Pure aggregation for sales reports. Inputs are plain objects (paise for money) so this is easy to test.
 
-import { calculateBill, type GstMode } from "./gst";
+import type { GstMode } from "./gst";
+import { orderBill } from "./order-bill";
 
 export interface ReportOrder {
   id: string;
@@ -14,6 +15,7 @@ export interface ReportOrder {
   serviceChargeRate: number;
   discountType: string | null;
   discountValue: number | null; // percent, or rupees for FLAT
+  pointsValue: number; // paise of loyalty points redeemed
   subtotal: number;
   discount: number;
   serviceCharge: number;
@@ -77,17 +79,11 @@ export function buildSalesReport(orders: ReportOrder[]): SalesReport {
     bump(staff, waiter, () => ({ name: waiter, bills: 0, amount: 0 }), (v) => (v.bills++, (v.amount += o.grandTotal)));
 
     // Rate-wise GST split, recomputed with the settings frozen on the bill.
-    const bill = calculateBill(
-      o.items.map((i) => ({ unitPrice: i.unitPrice, quantity: i.quantity, gstRate: i.gstRate })),
-      {
-        gstEnabled: o.gstEnabled,
-        mode: o.gstMode,
-        serviceChargeRate: o.serviceChargeRate,
-        discount:
-          o.discountValue && (o.discountType === "PERCENT" || o.discountType === "FLAT")
-            ? { type: o.discountType, value: o.discountType === "FLAT" ? Math.round(o.discountValue * 100) : o.discountValue }
-            : undefined,
-      },
+    const bill = orderBill(
+      o.items.map((i) => ({ unitPrice: i.unitPrice / 100, quantity: i.quantity, gstRate: i.gstRate, status: "SERVED" })),
+      { gstEnabled: o.gstEnabled, gstMode: o.gstMode, serviceChargeRate: o.serviceChargeRate },
+      { type: o.discountType, value: o.discountValue },
+      o.pointsValue,
     );
     for (const sl of bill.slabs) {
       bump(slabs, String(sl.gstRate), () => ({ gstRate: sl.gstRate, taxableValue: 0, cgst: 0, sgst: 0 }), (v) => {

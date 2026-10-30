@@ -4,7 +4,7 @@ import { buildUpiLink, getOnlinePaymentMode } from "@/lib/payments";
 import { qrDataUrl } from "@/lib/qr";
 import { PageHeader } from "@/components/ui";
 import { appUrl } from "@/lib/utils";
-import { GstForm, MenuSettingsForm, PaymentBasicsForm, ProfileForm, RazorpayForm } from "./forms";
+import { GstForm, LoyaltyForm, MenuSettingsForm, PaymentBasicsForm, ProfileForm, RazorpayForm } from "./forms";
 
 export const metadata = { title: "Settings" };
 
@@ -52,6 +52,16 @@ export default async function SettingsPage() {
               serviceChargeRate: r.serviceChargeRate.toString(),
               invoicePrefix: r.invoicePrefix,
               requireManagerPin: r.requireManagerPin,
+            }}
+          />
+          <LoyaltyForm
+            r={{
+              loyaltyEnabled: r.loyaltyEnabled,
+              loyaltyEarnPer100: r.loyaltyEarnPer100.toString(),
+              loyaltyPointValue: r.loyaltyPointValue.toString(),
+              loyaltyMinRedeem: r.loyaltyMinRedeem,
+              birthdayOfferText: r.birthdayOfferText,
+              reservationsEnabled: r.reservationsEnabled,
             }}
           />
           <div id="payments" className="scroll-mt-6 space-y-6">

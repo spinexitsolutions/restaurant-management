@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, ChefHat, ClipboardList, LayoutDashboard, Wallet, QrCode, Receipt, Settings, UserRound, Users, UtensilsCrossed } from "lucide-react";
+import { BarChart3, CalendarDays, Clock, Contact, Package, ChefHat, ClipboardList, LayoutDashboard, Wallet, QrCode, Receipt, Settings, UserRound, Users, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ICONS = { BarChart3, Wallet, ClipboardList, LayoutDashboard, UtensilsCrossed, QrCode, Users, Settings, Receipt, ChefHat, UserRound };
+const ICONS = { CalendarDays, Clock, Contact, Package, BarChart3, Wallet, ClipboardList, LayoutDashboard, UtensilsCrossed, QrCode, Users, Settings, Receipt, ChefHat, UserRound };
 
 export interface NavItem {
   href: string;
@@ -17,7 +17,7 @@ export interface NavItem {
 export function DashboardNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
   return (
-    <nav className="flex gap-1 overflow-x-auto px-3 pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
+    <nav className="flex gap-1 overflow-x-auto px-3 pb-2 lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-x-visible lg:overflow-y-auto lg:pb-2">
       {items.map((item) => {
         const Icon = ICONS[item.icon];
         const active = item.href === "/dashboard" ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");

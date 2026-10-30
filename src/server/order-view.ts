@@ -1,5 +1,5 @@
 import "server-only";
-import type { Restaurant } from "@prisma/client";
+import type { Kot, Order, OrderItem, Restaurant } from "@prisma/client";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/gst";
 import { orderBill } from "@/lib/order-bill";
@@ -40,6 +40,8 @@ export interface OrderView {
   customerPhone: string | null;
   invoiceNumber: string | null;
   discount: { type: "PERCENT" | "FLAT"; value: number; note: string | null } | null;
+  points: { redeemed: number; value: number; earned: number };
+  customer: { id: string; name: string | null; phone: string; points: number; visits: number } | null;
   createdAt: string;
   kots: {
     id: string;
@@ -56,6 +58,7 @@ export interface OrderView {
 }
 
 const orderInclude = {
+  customer: { select: { id: true, name: true, phone: true, points: true, visits: true } },
   kots: { orderBy: { createdAt: "asc" as const }, include: { items: { orderBy: { createdAt: "asc" as const } } } },
   payments: { orderBy: { createdAt: "asc" as const } },
 };
@@ -66,7 +69,7 @@ function findOrder(where: { id: string; restaurantId: string } | { publicToken: 
   return db.order.findFirst({ where, include: orderInclude });
 }
 
-export function billFor(order: LoadedOrder, r: Pick<Restaurant, "gstEnabled" | "gstMode" | "serviceChargeEnabled" | "serviceChargeRate">): BillSummary {
+export function billFor(order: Order & { kots: (Kot & { items: OrderItem[] })[] }, r: Pick<Restaurant, "gstEnabled" | "gstMode" | "serviceChargeEnabled" | "serviceChargeRate">): BillSummary {
   if (order.status === "BILLED" || order.status === "PAID") {
     return {
       subtotal: toPaise(order.subtotal!),
@@ -84,6 +87,7 @@ export function billFor(order: LoadedOrder, r: Pick<Restaurant, "gstEnabled" | "
     items,
     { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled ? r.serviceChargeRate : 0 },
     { type: order.discountType, value: order.discountValue },
+    toPaise(order.pointsRedeemValue),
   );
   return { subtotal: b.subtotal, discount: b.discount, serviceCharge: b.serviceCharge, cgst: b.cgst, sgst: b.sgst, roundOff: b.roundOff, grandTotal: b.grandTotal };
 }
@@ -105,6 +109,8 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
       order.discountType && order.discountValue
         ? { type: order.discountType as "PERCENT" | "FLAT", value: Number(order.discountValue), note: order.discountNote }
         : null,
+    points: { redeemed: order.pointsRedeemed, value: toPaise(order.pointsRedeemValue), earned: order.pointsEarned },
+    customer: order.customer,
     createdAt: order.createdAt.toISOString(),
     kots: order.kots.map((k) => ({
       id: k.id,

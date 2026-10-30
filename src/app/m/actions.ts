@@ -127,3 +127,14 @@ export async function confirmRazorpayPayment(token: string, input: z.input<typeo
     });
   });
 }
+
+/** Public booking request from /m/[slug]/book. Staff confirm it in Reservations. */
+export async function requestBooking(_: { ok?: boolean; error?: string } | null, formData: FormData): Promise<{ ok?: boolean; error?: string }> {
+  const { createReservation, reservationSchema } = await import("@/server/reservations");
+  const restaurant = await db.restaurant.findUnique({ where: { slug: String(formData.get("slug")) }, select: { id: true, isActive: true, reservationsEnabled: true } });
+  if (!restaurant?.isActive || !restaurant.reservationsEnabled) return { error: "Online booking isn't available" };
+  const parsed = reservationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const res = await run(() => createReservation(restaurant.id, parsed.data, "ONLINE"));
+  return res.ok ? { ok: true } : { error: res.error };
+}

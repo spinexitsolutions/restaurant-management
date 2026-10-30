@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { ImageUpload } from "@/components/image-upload";
 import { calculateBill, formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
-import { removeRazorpay, saveGst, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay } from "./actions";
+import { removeRazorpay, saveGst, saveLoyalty, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay } from "./actions";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -305,6 +305,44 @@ export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret, webhookUrl }:
             </Button>
           )}
           <FormMessage state={removeState ?? state} />
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+export function LoyaltyForm({
+  r,
+}: {
+  r: { loyaltyEnabled: boolean; loyaltyEarnPer100: string; loyaltyPointValue: string; loyaltyMinRedeem: number; birthdayOfferText: string; reservationsEnabled: boolean };
+}) {
+  const [state, action] = useActionState(saveLoyalty, null);
+  const [earn, setEarn] = useState(r.loyaltyEarnPer100);
+  const [value, setValue] = useState(r.loyaltyPointValue);
+  const back = ((Number(earn) || 0) * (Number(value) || 0)).toFixed(1);
+  return (
+    <Section title="Customers, loyalty & bookings" description="Customers are saved when you add their mobile number to a bill.">
+      <form action={action} className="space-y-4">
+        <Toggle name="loyaltyEnabled" label="Loyalty points: customers earn points on every paid bill" defaultChecked={r.loyaltyEnabled} />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Points per ₹100 billed">
+            <Input name="loyaltyEarnPer100" type="number" min={0} step="0.5" value={earn} onChange={(e) => setEarn(e.target.value)} />
+          </Field>
+          <Field label="Value of 1 point (₹)">
+            <Input name="loyaltyPointValue" type="number" min={0.01} step="0.01" value={value} onChange={(e) => setValue(e.target.value)} />
+          </Field>
+          <Field label="Minimum points to redeem">
+            <Input name="loyaltyMinRedeem" type="number" min={1} defaultValue={r.loyaltyMinRedeem} />
+          </Field>
+        </div>
+        <p className="text-xs text-stone-500">Customers get back about {back}% of what they spend as points.</p>
+        <Field label="Birthday / anniversary offer message" hint="{name} and {restaurant} are filled in automatically. Sent from your WhatsApp.">
+          <Textarea name="birthdayOfferText" rows={2} defaultValue={r.birthdayOfferText} maxLength={500} />
+        </Field>
+        <Toggle name="reservationsEnabled" label="Let customers request a table online (booking link)" defaultChecked={r.reservationsEnabled} />
+        <div className="flex items-center gap-3">
+          <SubmitButton>Save</SubmitButton>
+          <FormMessage state={state} />
         </div>
       </form>
     </Section>

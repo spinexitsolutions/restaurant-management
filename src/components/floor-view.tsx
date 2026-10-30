@@ -112,6 +112,10 @@ function TableTile({ table }: { table: FloorTable }) {
             {state === "billed" ? "Bill printed" : `${o.itemCount} items · ${minutesSince(o.createdAt)}m`}
           </span>
         </>
+      ) : table.reservation ? (
+        <span className="mt-0.5 rounded bg-blue-100 px-1.5 text-[11px] font-semibold text-blue-800">
+          Reserved {new Date(table.reservation.startsAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" })}
+        </span>
       ) : (
         <span className="text-xs text-stone-400">{table.capacity} seats</span>
       )}

@@ -14,7 +14,9 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
     items,
     { gstEnabled: order.gstEnabled ?? false, gstMode: order.gstMode ?? "EXCLUSIVE", serviceChargeRate: order.serviceChargeRate ?? 0 },
     { type: order.discountType, value: order.discountValue },
+    toPaise(order.pointsRedeemValue),
   );
+  const pointsValue = toPaise(order.pointsRedeemValue);
   const taxInvoice = order.gstEnabled && restaurant.gstin;
   const date = (order.billedAt ?? order.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
 
@@ -72,7 +74,8 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
 
       <dl className="my-2 space-y-0.5">
         <Line label={order.gstMode === "INCLUSIVE" ? "Taxable value" : "Sub total"} value={toPaise(order.subtotal ?? 0)} />
-        {toPaise(order.discountAmount ?? 0) > 0 && <Line label="Discount" value={-toPaise(order.discountAmount!)} />}
+        {toPaise(order.discountAmount ?? 0) - pointsValue > 0 && <Line label="Discount" value={-(toPaise(order.discountAmount!) - pointsValue)} />}
+        {pointsValue > 0 && <Line label={`Loyalty points (${order.pointsRedeemed})`} value={-pointsValue} />}
         {toPaise(order.serviceCharge ?? 0) > 0 && <Line label={`Service charge @${Number(order.serviceChargeRate)}%`} value={toPaise(order.serviceCharge!)} />}
         {bill.slabs
           .filter((s) => s.gstRate > 0)
@@ -105,6 +108,7 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
           ))}
         </div>
       )}
+      {order.pointsEarned > 0 && <p className="mt-2 text-center">You earned {order.pointsEarned} loyalty points on this bill!</p>}
       <p className="mt-3 text-center">Thank you! Visit again 🙏</p>
     </div>
   );

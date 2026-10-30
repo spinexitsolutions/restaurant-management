@@ -21,6 +21,8 @@ import {
   reopenBill,
   resolveServiceRequest,
   setDiscount,
+  redeemPoints,
+  setOrderCustomer,
   splitOrder,
   transferOrder,
   mergeOrders,
@@ -215,4 +217,17 @@ export async function splitBill(orderId: string, parts: { itemId: string; quanti
 export async function resolveRequest(id: string) {
   const s = await requireRestaurantSession(ORDER_ROLES);
   return run(() => resolveServiceRequest(s.restaurantId, id));
+}
+
+export async function setCustomer(orderId: string, phone: string, name: string) {
+  const s = await requireRestaurantSession(ORDER_ROLES);
+  return run(() => setOrderCustomer(s.restaurantId, orderId, phone.trim(), name));
+}
+
+export async function applyPoints(orderId: string, points: number) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  return run(async () => {
+    await redeemPoints(s.restaurantId, orderId, points);
+    if (points > 0) await audit({ restaurantId: s.restaurantId, actor: s, action: "POINTS_REDEEMED", orderId, details: { points } });
+  });
 }

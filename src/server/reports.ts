@@ -49,6 +49,7 @@ export async function loadReportOrders(restaurantId: string, range: Range): Prom
     serviceChargeRate: Number(o.serviceChargeRate ?? 0),
     discountType: o.discountType,
     discountValue: o.discountValue ? Number(o.discountValue) : null,
+    pointsValue: toPaise(o.pointsRedeemValue),
     subtotal: toPaise(o.subtotal ?? 0),
     discount: toPaise(o.discountAmount ?? 0),
     serviceCharge: toPaise(o.serviceCharge ?? 0),

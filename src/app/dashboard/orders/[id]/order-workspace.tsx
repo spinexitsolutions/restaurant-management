@@ -18,6 +18,7 @@ import type { OrderItemView, OrderView } from "@/server/order-view";
 import {
   acceptKot,
   applyDiscount,
+  applyPoints,
   billOrder,
   cancelOrderItem,
   cancelWholeOrder,
@@ -26,6 +27,7 @@ import {
   rejectKot,
   reopenOrder,
   sendKot,
+  setCustomer,
   splitBill,
   takePayment,
   transferTable,
@@ -33,6 +35,7 @@ import {
 } from "../actions";
 
 export interface WorkspaceRestaurant {
+  loyalty: { enabled: boolean; pointValue: number; minRedeem: number };
   name: string;
   upiId: string | null;
   upiPayeeName: string | null;
@@ -326,6 +329,7 @@ function BillBox({ order, restaurant }: { order: OrderView; restaurant: Workspac
       {b.discount > 0 && (
         <Row label={`Discount${order.discount?.type === "PERCENT" ? ` (${order.discount.value}%)` : ""}`} value={`- ${formatINR(b.discount)}`} />
       )}
+      {order.points.value > 0 && <Row label={`incl. ${order.points.redeemed} loyalty points`} value={`- ${formatINR(order.points.value)}`} />}
       {b.serviceCharge > 0 && <Row label="Service charge" value={formatINR(b.serviceCharge)} />}
       {b.cgst + b.sgst > 0 && (
         <>
@@ -380,6 +384,7 @@ function BillingPanel({
   if (order.status === "OPEN") {
     return (
       <div className="space-y-3 rounded-lg ring-1 ring-stone-200 p-3">
+        <CustomerBox order={order} restaurant={restaurant} pending={pending} onAct={onAct} />
         <p className="text-sm font-semibold">Discount</p>
         <div className="flex gap-2">
           <Select className="w-24" value={discountType} onChange={(e) => setDiscountType(e.target.value as "PERCENT" | "FLAT")}>
@@ -630,5 +635,58 @@ function TableActions({ order, floorTables, canBill, onAct }: { order: OrderView
         </div>
       )}
     </>
+  );
+}
+
+function CustomerBox({ order, restaurant, pending, onAct }: { order: OrderView; restaurant: WorkspaceRestaurant; pending: boolean; onAct: Act }) {
+  const [phone, setPhone] = useState(order.customer?.phone ?? order.customerPhone ?? "");
+  const [name, setName] = useState(order.customer?.name ?? order.customerName ?? "");
+  const [points, setPoints] = useState(order.points.redeemed ? String(order.points.redeemed) : "");
+  const c = order.customer;
+  return (
+    <div className="space-y-2 border-b border-stone-100 pb-3">
+      <p className="text-sm font-semibold">Customer</p>
+      {c ? (
+        <div className="flex items-center justify-between rounded-lg bg-stone-50 px-3 py-2 text-sm">
+          <span>
+            {c.name || "Guest"} · {c.phone}
+            <span className="block text-xs text-stone-500">
+              {c.visits} visit{c.visits === 1 ? "" : "s"}
+              {restaurant.loyalty.enabled && ` · ${c.points} points`}
+            </span>
+          </span>
+          <button className="text-xs text-stone-500 hover:underline" disabled={pending} onClick={() => onAct(() => setCustomer(order.id, "", ""))}>
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <Input placeholder="Mobile" inputMode="numeric" maxLength={10} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
+          <Input placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button variant="secondary" disabled={pending || phone.length !== 10} onClick={() => onAct(() => setCustomer(order.id, phone, name))}>
+            Add
+          </Button>
+        </div>
+      )}
+      {c && restaurant.loyalty.enabled && (c.points >= restaurant.loyalty.minRedeem || order.points.redeemed > 0) && (
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            min={0}
+            placeholder={`Points (min ${restaurant.loyalty.minRedeem})`}
+            value={points}
+            onChange={(e) => setPoints(e.target.value)}
+          />
+          <Button variant="secondary" disabled={pending} onClick={() => onAct(() => applyPoints(order.id, Math.floor(Number(points) || 0)))}>
+            {order.points.redeemed ? "Update" : "Redeem"}
+          </Button>
+        </div>
+      )}
+      {c && restaurant.loyalty.enabled && order.points.redeemed > 0 && (
+        <p className="text-xs text-green-700">
+          {order.points.redeemed} points = {formatINR(order.points.value)} off
+        </p>
+      )}
+    </div>
   );
 }

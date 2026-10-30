@@ -5,6 +5,7 @@ import { APP_NAME } from "@/lib/utils";
 import { logout } from "../(auth)/actions";
 import { DashboardNav, type NavItem } from "./nav";
 import { OfflineBar } from "@/components/offline-bar";
+import { ClockButton } from "@/components/clock-button";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await requireRestaurantSession();
@@ -20,13 +21,17 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ...(can(["OWNER", "MANAGER", "CASHIER", "WAITER"]) ? [{ href: "/dashboard/waiter", label: "Tables", icon: "UserRound" } as const] : []),
     ...(can(["OWNER", "MANAGER", "CHEF"]) ? [{ href: "/dashboard/kitchen", label: "Kitchen", icon: "ChefHat" } as const] : []),
     ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/orders", label: "Orders", icon: "ClipboardList" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CASHIER", "WAITER"]) ? [{ href: "/dashboard/reservations", label: "Reservations", icon: "CalendarDays" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/customers", label: "Customers", icon: "Contact" } as const] : []),
     ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/day-close", label: "Day close", icon: "Wallet" } as const] : []),
     ...(can(["OWNER", "MANAGER"]) ? [{ href: "/dashboard/reports", label: "Reports", icon: "BarChart3" } as const] : []),
     ...(can(["OWNER", "MANAGER"])
       ? ([
           { href: "/dashboard/menu", label: "Menu", icon: "UtensilsCrossed" },
+          { href: "/dashboard/inventory", label: "Inventory", icon: "Package" },
           { href: "/dashboard/tables", label: "Tables & QR", icon: "QrCode" },
           { href: "/dashboard/staff", label: "Staff", icon: "Users" },
+          { href: "/dashboard/attendance", label: "Attendance", icon: "Clock" },
           { href: "/dashboard/settings", label: "Settings", icon: "Settings" },
         ] satisfies NavItem[])
       : []),
@@ -58,6 +63,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           )}
           <p className="truncate text-sm font-medium">{session.name}</p>
           <p className="mb-2 text-xs text-stone-500">{session.role}</p>
+          <div className="mb-3">
+            <ClockButton userId={session.userId} compact />
+          </div>
           <form action={logout}>
             <button className="flex items-center gap-2 text-sm text-stone-600 hover:text-red-600">
               <LogOut size={16} /> Log out

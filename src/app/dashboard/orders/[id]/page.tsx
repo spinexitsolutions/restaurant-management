@@ -51,6 +51,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
       menu={await loadMenu(restaurant.id, Number(restaurant.defaultGstRate))}
       canBill={BILLING_ROLES.includes(session.role)}
       restaurant={{
+        loyalty: { enabled: restaurant.loyaltyEnabled, pointValue: Number(restaurant.loyaltyPointValue), minRedeem: restaurant.loyaltyMinRedeem },
         name: restaurant.name,
         upiId: restaurant.upiId,
         upiPayeeName: restaurant.upiPayeeName,

@@ -50,9 +50,21 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Photos | Upload menu photos and logo. Images are resized in the browser (WebP) and stored in the database, so it works on any host without extra storage setup |
 | Offline & PWA | Installable app (Add to Home Screen). Pages already opened keep working offline. KOTs and payments made offline are queued on the device and synced automatically when the internet returns, without duplicates (each carries a request id) |
 
+## What's built (Phase 4): inventory, customers, bookings & staff
+
+| Area | Features |
+|---|---|
+| Inventory (`/dashboard/inventory`) | Ingredients with unit (kg/g/l/ml/pcs), opening stock, low-stock level. **Purchase** (updates weighted average cost, supplier), **wastage**, **physical count**. Stock value, low-stock alert and WhatsApp list, full movement history |
+| Recipes & food cost | Per-dish recipe, with optional per-size recipes (Half/Full). Food cost % per dish/size, colour-coded |
+| Automatic stock | Ingredients are deducted when items reach the kitchen (KOT accepted), returned if an item is cancelled before cooking, and counted as used if it was already being cooked. Sales are never blocked by stock |
+| Customers (`/dashboard/customers`) | Created automatically from the mobile number on a bill. Visits, total spent, average bill, favourite dishes, notes, order history. Search |
+| Loyalty points | Earn X points per ₹100 on paid bills, redeem as a discount before tax (min points, ₹ per point configurable). Points are taken at billing, returned if the bill is reopened or cancelled, and shown on the invoice. Full points ledger and manual adjustment with reason (audited) |
+| Birthday & anniversary | Upcoming 7 days on the dashboard, one-tap WhatsApp offer from a template |
+| Reservations (`/dashboard/reservations`) | Staff bookings, optional public booking page (`/m/<slug>/book`) with request → confirm flow and spam limits, table assignment with capacity warning, "Reserved 8 PM" on the table map, seat & start order, no-show/cancel, WhatsApp confirmation |
+| Attendance | Clock in/out for every staff member (sidebar or Overview). Manager view: today's status, month summary of days and hours, close forgotten shifts |
+
 ## Roadmap
 
-- **Phase 4:** Inventory & recipes, CRM & loyalty, reservations, attendance
 - **Phase 5:** Multi-outlet, subscription billing, aggregator integrations, AI insights
 
 ## Local setup
