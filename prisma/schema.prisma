@@ -1,0 +1,208 @@
+// Multi-tenant schema: every business record belongs to a Restaurant.
+// Money is stored as Decimal(10,2) rupees; calculations happen in integer paise (see src/lib/gst.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  MANAGER
+  CASHIER
+  WAITER
+  CHEF
+}
+
+enum GstMode {
+  INCLUSIVE
+  EXCLUSIVE
+}
+
+enum FoodType {
+  VEG
+  NON_VEG
+  EGG
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  BILL_PENDING
+  CLEANING
+}
+
+enum Plan {
+  TRIAL
+  BASIC
+  PRO
+}
+
+model Restaurant {
+  id             String  @id @default(cuid())
+  name           String
+  slug           String  @unique
+  phone          String?
+  whatsappNumber String?
+  email          String?
+  address        String?
+  city           String?
+  state          String?
+  pincode        String?
+  logoUrl        String?
+  fssaiNumber    String?
+
+  // GST
+  gstEnabled           Boolean @default(true)
+  gstin                String?
+  gstMode              GstMode @default(EXCLUSIVE)
+  defaultGstRate       Decimal @default(5) @db.Decimal(5, 2)
+  serviceChargeEnabled Boolean @default(false)
+  serviceChargeRate    Decimal @default(0) @db.Decimal(5, 2)
+  invoicePrefix        String  @default("INV")
+  nextInvoiceNumber    Int     @default(1)
+
+  // Payments: Razorpay is used when keys are present, otherwise a plain UPI QR.
+  upiId                    String?
+  upiPayeeName             String?
+  razorpayKeyId            String?
+  razorpayKeySecretEnc     String? // AES-256-GCM encrypted, never sent to the client
+  razorpayWebhookSecretEnc String?
+  acceptCash               Boolean @default(true)
+  acceptCard               Boolean @default(true)
+
+  // Customer QR menu
+  whatsappOrderingEnabled Boolean @default(true)
+  qrOrderingEnabled       Boolean @default(true)
+  menuThemeColor          String  @default("#ea580c")
+
+  // SaaS subscription
+  plan          Plan      @default(TRIAL)
+  planExpiresAt DateTime?
+  isActive      Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  categories Category[]
+  menuItems  MenuItem[]
+  tables     DiningTable[]
+}
+
+model User {
+  id           String      @id @default(cuid())
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  email        String      @unique
+  phone        String?
+  passwordHash String
+  role         Role
+  isActive     Boolean     @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([restaurantId])
+}
+
+model Category {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  sortOrder    Int        @default(0)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  items        MenuItem[]
+
+  @@index([restaurantId, sortOrder])
+}
+
+model MenuItem {
+  id              String        @id @default(cuid())
+  restaurantId    String
+  restaurant      Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  price           Decimal       @db.Decimal(10, 2)
+  imageUrl        String?
+  foodType        FoodType      @default(VEG)
+  gstRate         Decimal?      @db.Decimal(5, 2) // null = restaurant default
+  isAvailable     Boolean       @default(true)
+  isBestseller    Boolean       @default(false)
+  spiceLevel      Int           @default(0) // 0-3
+  prepTimeMinutes Int?
+  sortOrder       Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  variants        ItemVariant[]
+  addonGroups     AddonGroup[]
+
+  @@index([restaurantId, categoryId])
+}
+
+// e.g. Half / Full. When an item has variants the variant price replaces the base price.
+model ItemVariant {
+  id         String   @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  name       String
+  price      Decimal  @db.Decimal(10, 2)
+  sortOrder  Int      @default(0)
+
+  @@index([menuItemId])
+}
+
+// e.g. "Extra toppings" with min/max selections.
+model AddonGroup {
+  id         String        @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem      @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  name       String
+  minSelect  Int           @default(0)
+  maxSelect  Int           @default(1)
+  sortOrder  Int           @default(0)
+  options    AddonOption[]
+
+  @@index([menuItemId])
+}
+
+model AddonOption {
+  id           String     @id @default(cuid())
+  addonGroupId String
+  addonGroup   AddonGroup @relation(fields: [addonGroupId], references: [id], onDelete: Cascade)
+  name         String
+  price        Decimal    @default(0) @db.Decimal(10, 2)
+  sortOrder    Int        @default(0)
+
+  @@index([addonGroupId])
+}
+
+model DiningTable {
+  id           String      @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String // "T1", "Rooftop 4"
+  area         String? // "AC Hall", "Rooftop"
+  capacity     Int         @default(4)
+  qrToken      String      @unique @default(cuid())
+  status       TableStatus @default(FREE)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([restaurantId, name])
+  @@index([restaurantId])
+}
