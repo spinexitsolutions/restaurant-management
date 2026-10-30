@@ -22,7 +22,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 3 operations", () => {
     });
 
   beforeAll(async () => {
-    const r = await db.restaurant.create({ data: { name: "P3", slug: `p3-${Date.now()}`, gstEnabled: false } });
+    const r = await db.restaurant.create({ data: { organization: { create: { name: "Test org" } }, name: "P3", slug: `p3-${Date.now()}`, gstEnabled: false } });
     restaurantId = r.id;
     [t1, t2, t3] = await Promise.all(["T1", "T2", "T3"].map(async (name) => (await db.diningTable.create({ data: { restaurantId, name } })).id));
     const cat = await db.category.create({ data: { restaurantId, name: "Main" } });
@@ -32,7 +32,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 3 operations", () => {
   });
 
   afterAll(async () => {
-    if (restaurantId) await db.restaurant.delete({ where: { id: restaurantId } });
+    if (restaurantId) await db.organization.deleteMany({ where: { restaurants: { some: { id: restaurantId } } } });
     await db.$disconnect();
   });
 

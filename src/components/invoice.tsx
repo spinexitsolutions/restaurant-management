@@ -38,7 +38,14 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
         </p>
         <p>Date: {date}</p>
         <p>
-          {order.tableName ? `Table: ${order.tableName}` : order.type === "DELIVERY" ? "Delivery" : "Takeaway"} · Order #{order.orderNumber}
+          {order.tableName
+            ? `Table: ${order.tableName}`
+            : order.channel
+              ? `${order.channel === "ZOMATO" ? "Zomato" : "Swiggy"}${order.channelRef ? ` #${order.channelRef}` : ""}`
+              : order.type === "DELIVERY"
+                ? "Delivery"
+                : "Takeaway"}{" "}
+          · Order #{order.orderNumber}
         </p>
         {order.customerName && <p>Customer: {order.customerName}</p>}
         {order.customerPhone && <p>Mobile: {order.customerPhone}</p>}
@@ -98,11 +105,14 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
         </p>
       )}
 
+      {order.channel && (
+        <p className="mt-1 text-[11px]">GST on this order is paid by the e-commerce operator ({order.channel === "ZOMATO" ? "Zomato" : "Swiggy"}) under Section 9(5) of the CGST Act.</p>
+      )}
       {order.payments.length > 0 && (
         <div className="mt-2">
           {order.payments.map((p) => (
             <p key={p.id} className="flex justify-between">
-              <span>Paid by {p.method}</span>
+              <span>Paid by {p.method === "AGGREGATOR" ? (order.channel === "SWIGGY" ? "Swiggy" : "Zomato") : p.method}</span>
               <span>{formatINR(toPaise(p.amount))}</span>
             </p>
           ))}

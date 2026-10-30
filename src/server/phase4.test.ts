@@ -14,7 +14,8 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 4", () => {
 
   beforeAll(async () => {
     const r = await db.restaurant.create({
-      data: { name: "P4", slug: `p4-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z5", defaultGstRate: 5, loyaltyEnabled: true, loyaltyEarnPer100: 5, loyaltyPointValue: 1, loyaltyMinRedeem: 10 },
+      data: {
+        organization: { create: { name: "Test org" } }, name: "P4", slug: `p4-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z5", defaultGstRate: 5, loyaltyEnabled: true, loyaltyEarnPer100: 5, loyaltyPointValue: 1, loyaltyMinRedeem: 10 },
     });
     restaurantId = r.id;
     tableId = (await db.diningTable.create({ data: { restaurantId, name: "T1" } })).id;
@@ -36,7 +37,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 4", () => {
   });
 
   afterAll(async () => {
-    if (restaurantId) await db.restaurant.delete({ where: { id: restaurantId } });
+    if (restaurantId) await db.organization.deleteMany({ where: { restaurants: { some: { id: restaurantId } } } });
     await db.$disconnect();
   });
 

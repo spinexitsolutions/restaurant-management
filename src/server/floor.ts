@@ -10,6 +10,7 @@ export interface FloorOrder {
   type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
   customerName: string | null;
   tableName: string | null;
+  channel: string | null;
   total: number;
   itemCount: number;
   readyCount: number;
@@ -50,6 +51,7 @@ export async function getFloor(restaurantId: string) {
       type: o.type,
       customerName: o.customerName,
       tableName: o.tableName,
+      channel: o.channel,
       total: billFor(o, restaurant).grandTotal,
       itemCount: live.reduce((s, i) => s + i.quantity, 0),
       readyCount: live.filter((i) => i.status === "READY").length,

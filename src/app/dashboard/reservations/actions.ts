@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyBooking } from "@/server/whatsapp";
 import { z } from "zod";
 import { requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -14,7 +16,8 @@ export async function addReservation(_: FormState, formData: FormData): Promise<
   const parsed = reservationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   try {
-    await createReservation(s.restaurantId, { ...parsed.data, tableId: String(formData.get("tableId") || "") || null }, "STAFF");
+    const r = await createReservation(s.restaurantId, { ...parsed.data, tableId: String(formData.get("tableId") || "") || null }, "STAFF");
+    after(() => notifyBooking(r.id));
   } catch (e) {
     if (e instanceof OrderError) return { error: e.message };
     throw e;
@@ -40,6 +43,7 @@ export async function updateReservation(input: z.input<typeof updateSchema>): Pr
     });
     await bumpLive(tx, s.restaurantId);
   });
+  if (d.status === "CONFIRMED") after(() => notifyBooking(d.id));
   revalidatePath("/dashboard/reservations");
   return { ok: "Updated" };
 }

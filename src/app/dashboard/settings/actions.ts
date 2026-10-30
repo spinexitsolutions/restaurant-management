@@ -155,3 +155,57 @@ export async function saveLoyalty(_: FormState, formData: FormData): Promise<For
   await db.restaurant.update({ where: { id: restaurantId }, data: parsed.data });
   return done("Customer settings saved");
 }
+
+const aggregatorSchema = z.object({
+  zomatoCommission: z.coerce.number().min(0).max(60, "Commission looks too high"),
+  swiggyCommission: z.coerce.number().min(0).max(60, "Commission looks too high"),
+});
+
+export async function saveAggregators(_: FormState, formData: FormData): Promise<FormState> {
+  const { restaurantId } = await requireRestaurantSession(["OWNER"]);
+  const parsed = aggregatorSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await db.restaurant.update({ where: { id: restaurantId }, data: parsed.data });
+  return done("Aggregator settings saved");
+}
+
+const templateName = z
+  .string()
+  .trim()
+  .max(100)
+  .refine((s) => !s || /^[a-z0-9_]+$/.test(s), "Template names use lowercase letters, numbers and _ only")
+  .transform((s) => s || null);
+
+const waSchema = z.object({
+  waPhoneNumberId: z.string().trim().regex(/^\d*$/, "Phone number ID is a number from Meta").max(30).transform((s) => s || null),
+  waAccessToken: z.string().trim().max(1000),
+  waTemplateLang: z.string().trim().regex(/^[a-z]{2}(_[A-Z]{2})?$/, "Language code like en, hi or en_US"),
+  waBillTemplate: templateName,
+  waBookingTemplate: templateName,
+  waBirthdayTemplate: templateName,
+  waSummaryTemplate: templateName,
+});
+
+export async function saveWhatsApp(_: FormState, formData: FormData): Promise<FormState> {
+  const { restaurantId } = await requireRestaurantSession(["OWNER"]);
+  const parsed = waSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { waAccessToken, ...rest } = parsed.data;
+  await db.restaurant.update({
+    where: { id: restaurantId },
+    data: { ...rest, ...(waAccessToken ? { waAccessTokenEnc: encrypt(waAccessToken) } : {}), ...(!rest.waPhoneNumberId ? { waAccessTokenEnc: null } : {}) },
+  });
+  return done(rest.waPhoneNumberId ? "WhatsApp settings saved" : "WhatsApp disconnected");
+}
+
+/** Sends Meta's built-in "hello_world" template to the restaurant's own number to check the setup. */
+export async function sendTestWhatsApp(): Promise<FormState> {
+  const { restaurantId } = await requireRestaurantSession(["OWNER"]);
+  const { sendTemplate } = await import("@/server/whatsapp");
+  const r = await db.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
+  const to = r.whatsappNumber || r.phone;
+  if (!to) return { error: "Add your WhatsApp number in Customer QR menu settings first" };
+  const res = await sendTemplate(r, "TEST", to, "hello_world", [], "en_US");
+  revalidatePath("/dashboard/settings");
+  return res.ok ? { ok: `Test message sent to ${to}` } : { error: `Meta said: ${res.error}` };
+}

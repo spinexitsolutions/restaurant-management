@@ -7,7 +7,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { ImageUpload } from "@/components/image-upload";
 import { calculateBill, formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
-import { removeRazorpay, saveGst, saveLoyalty, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay } from "./actions";
+import { removeRazorpay, saveAggregators, saveGst, saveLoyalty, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay, saveWhatsApp, sendTestWhatsApp } from "./actions";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -345,6 +345,106 @@ export function LoyaltyForm({
           <FormMessage state={state} />
         </div>
       </form>
+    </Section>
+  );
+}
+
+export function AggregatorForm({ r }: { r: { zomatoCommission: string; swiggyCommission: string } }) {
+  const [state, action] = useActionState(saveAggregators, null);
+  return (
+    <Section
+      title="Zomato & Swiggy"
+      description="Punch aggregator orders from POS → Zomato / Swiggy so they reach the kitchen, stock and reports. Their bills carry no GST because the platform pays it (Section 9(5))."
+    >
+      <form action={action} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Zomato commission (%)">
+            <Input name="zomatoCommission" type="number" min={0} max={60} step="0.5" defaultValue={r.zomatoCommission} />
+          </Field>
+          <Field label="Swiggy commission (%)">
+            <Input name="swiggyCommission" type="number" min={0} max={60} step="0.5" defaultValue={r.swiggyCommission} />
+          </Field>
+        </div>
+        <div className="flex items-center gap-3">
+          <SubmitButton>Save</SubmitButton>
+          <FormMessage state={state} />
+        </div>
+      </form>
+    </Section>
+  );
+}
+
+export function WhatsAppForm({
+  r,
+  log,
+}: {
+  r: { waPhoneNumberId: string; hasToken: boolean; waTemplateLang: string; waBillTemplate: string; waBookingTemplate: string; waBirthdayTemplate: string; waSummaryTemplate: string };
+  log: { id: string; when: string; to: string; kind: string; status: string; error: string | null }[];
+}) {
+  const [state, action] = useActionState(saveWhatsApp, null);
+  const [test, setTest] = useState<{ ok?: string; error?: string } | null>(null);
+  const [pending, start] = useTransition();
+  const connected = !!r.waPhoneNumberId && r.hasToken;
+  return (
+    <Section
+      title="WhatsApp Business (automatic messages)"
+      description="Send bills, booking confirmations, birthday wishes and a daily summary automatically, using the WhatsApp Cloud API from Meta. Without this, WhatsApp buttons open a ready-made message for you to send."
+    >
+      <form action={action} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Field label="Phone number ID">
+            <Input name="waPhoneNumberId" defaultValue={r.waPhoneNumberId} inputMode="numeric" placeholder="1234567890" />
+          </Field>
+          <Field label="Access token" hint={r.hasToken ? "Saved. Leave blank to keep it." : "Permanent token from a system user"}>
+            <Input name="waAccessToken" type="password" autoComplete="off" placeholder={r.hasToken ? "••••••••••••" : ""} />
+          </Field>
+          <Field label="Template language">
+            <Input name="waTemplateLang" defaultValue={r.waTemplateLang} placeholder="en" />
+          </Field>
+        </div>
+        <p className="text-xs text-stone-500">Approved template names. Leave blank to turn that message off. Body variables, in order:</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Bill after payment" hint="{{1}} name, {{2}} restaurant, {{3}} amount, {{4}} bill link">
+            <Input name="waBillTemplate" defaultValue={r.waBillTemplate} placeholder="bill_ready" />
+          </Field>
+          <Field label="Booking confirmed" hint="{{1}} name, {{2}} restaurant, {{3}} date & time, {{4}} guests">
+            <Input name="waBookingTemplate" defaultValue={r.waBookingTemplate} placeholder="booking_confirmed" />
+          </Field>
+          <Field label="Birthday / anniversary (sent at 9 AM)" hint="{{1}} name, {{2}} restaurant">
+            <Input name="waBirthdayTemplate" defaultValue={r.waBirthdayTemplate} placeholder="birthday_offer" />
+          </Field>
+          <Field label="Daily summary to owner (9 AM)" hint="{{1}} restaurant, {{2}} date, {{3}} sales, {{4}} bills">
+            <Input name="waSummaryTemplate" defaultValue={r.waSummaryTemplate} placeholder="daily_summary" />
+          </Field>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <SubmitButton>Save</SubmitButton>
+          {connected && (
+            <Button type="button" variant="secondary" disabled={pending} onClick={() => start(async () => setTest(await sendTestWhatsApp()))}>
+              {pending ? "Sending..." : "Send test message"}
+            </Button>
+          )}
+          <FormMessage state={test ?? state} />
+        </div>
+      </form>
+      {log.length > 0 && (
+        <div className="mt-5">
+          <p className="mb-2 text-sm font-semibold">Recent messages</p>
+          <ul className="divide-y divide-stone-100 text-xs">
+            {log.map((m) => (
+              <li key={m.id} className="flex flex-wrap gap-2 py-1.5">
+                <span className="w-32 text-stone-500">{m.when}</span>
+                <span className="w-24">{m.kind}</span>
+                <span className="w-28">{m.to}</span>
+                <span className={m.status === "SENT" ? "text-green-700" : "text-red-600"}>
+                  {m.status}
+                  {m.error && `: ${m.error}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Section>
   );
 }

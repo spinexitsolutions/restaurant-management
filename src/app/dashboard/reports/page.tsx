@@ -20,6 +20,10 @@ const ACTION_LABEL: Record<string, string> = {
   KOT_REJECTED: "QR order rejected",
   TABLE_TRANSFERRED: "Table moved",
   ORDERS_MERGED: "Tables merged",
+  POINTS_REDEEMED: "Points redeemed",
+  POINTS_ADJUSTED: "Points adjusted",
+  OUTLET_CREATED: "Outlet created",
+  MENU_COPIED: "Menu copied",
   BILL_SPLIT: "Bill split",
   DAY_CLOSED: "Day closed",
 };
@@ -43,6 +47,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     ["This month", `${today.slice(0, 8)}01`, today],
   ] as const;
 
+  const restaurant = await db.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { zomatoCommission: true, swiggyCommission: true } });
+  const commission: Record<string, number> = { ZOMATO: Number(restaurant.zomatoCommission), SWIGGY: Number(restaurant.swiggyCommission) };
+  const CHANNEL_LABEL: Record<string, string> = { DINE_IN: "Dine-in", TAKEAWAY: "Takeaway", DELIVERY: "Own delivery", ZOMATO: "Zomato", SWIGGY: "Swiggy" };
   const [orders, cancelled, logs] = await Promise.all([
     tab === "sales" ? loadReportOrders(restaurantId, range) : Promise.resolve([]),
     db.order.count({ where: { restaurantId, status: "CANCELLED", createdAt: { gte: range.start, lt: range.end } } }),
@@ -195,6 +202,18 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             <Card>
               <h2 className="mb-3 font-semibold">Items (best sellers first)</h2>
               <Table head={["Item", "Qty", "Amount"]} rows={r.items.map((i) => [i.name, String(i.quantity), formatINR(i.amount)])} />
+            </Card>
+            <Card>
+              <h2 className="mb-3 font-semibold">Channels</h2>
+              <Table
+                head={["Channel", "Bills", "Sales", "Est. commission"]}
+                rows={r.channels.map((c) => [
+                  CHANNEL_LABEL[c.channel] ?? c.channel,
+                  String(c.bills),
+                  formatINR(c.amount),
+                  commission[c.channel] ? `${formatINR(Math.round((c.amount * commission[c.channel]) / 100))} (${commission[c.channel]}%)` : "-",
+                ])}
+              />
             </Card>
             <Card>
               <h2 className="mb-3 font-semibold">Staff</h2>

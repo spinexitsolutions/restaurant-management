@@ -8,7 +8,7 @@ import { OrderWorkspace } from "./order-workspace";
 
 export const metadata = { title: "Order" };
 
-type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ table?: string; type?: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ table?: string; type?: string; channel?: string }> };
 
 export default async function OrderPage({ params, searchParams }: Props) {
   const session = await requireRestaurantSession(ORDER_ROLES);
@@ -17,21 +17,22 @@ export default async function OrderPage({ params, searchParams }: Props) {
   const restaurant = await db.restaurant.findUniqueOrThrow({ where: { id: session.restaurantId } });
 
   let order = null;
-  let context: { tableId: string | null; tableName: string | null; type: "DINE_IN" | "TAKEAWAY" | "DELIVERY" };
+  let context: { tableId: string | null; tableName: string | null; type: "DINE_IN" | "TAKEAWAY" | "DELIVERY"; channel: "ZOMATO" | "SWIGGY" | null };
   if (id === "new") {
     if (sp.table) {
       const table = await db.diningTable.findFirst({ where: { id: sp.table, restaurantId: restaurant.id } });
       if (!table) notFound();
       const running = await db.order.findFirst({ where: { tableId: table.id, status: { in: ["OPEN", "BILLED"] } }, select: { id: true } });
       if (running) redirect(`/dashboard/orders/${running.id}`);
-      context = { tableId: table.id, tableName: table.name, type: "DINE_IN" };
+      context = { tableId: table.id, tableName: table.name, type: "DINE_IN", channel: null };
     } else {
-      context = { tableId: null, tableName: null, type: sp.type === "DELIVERY" ? "DELIVERY" : "TAKEAWAY" };
+      const channel = sp.channel === "ZOMATO" || sp.channel === "SWIGGY" ? sp.channel : null;
+      context = { tableId: null, tableName: null, type: sp.type === "DELIVERY" || channel ? "DELIVERY" : "TAKEAWAY", channel };
     }
   } else {
     order = await getOrderView(restaurant, id);
     if (!order) notFound();
-    context = { tableId: order.tableId, tableName: order.tableName, type: order.type };
+    context = { tableId: order.tableId, tableName: order.tableName, type: order.type, channel: order.channel };
   }
 
   const [tables, running] = await Promise.all([

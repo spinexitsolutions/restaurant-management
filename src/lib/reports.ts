@@ -9,6 +9,7 @@ export interface ReportOrder {
   billedAt: Date;
   tableName: string | null;
   type: string;
+  channel: string | null;
   waiterName: string | null;
   gstEnabled: boolean;
   gstMode: GstMode;
@@ -42,6 +43,7 @@ export interface SalesReport {
   categories: { category: string; quantity: number; amount: number }[];
   hours: { hour: number; bills: number; amount: number }[];
   staff: { name: string; bills: number; amount: number }[];
+  channels: { channel: string; bills: number; amount: number }[];
   gstSlabs: { gstRate: number; taxableValue: number; cgst: number; sgst: number }[];
 }
 
@@ -61,6 +63,7 @@ export function buildSalesReport(orders: ReportOrder[]): SalesReport {
   const items = new Map<string, { name: string; category: string; quantity: number; amount: number }>();
   const categories = new Map<string, { category: string; quantity: number; amount: number }>();
   const staff = new Map<string, { name: string; bills: number; amount: number }>();
+  const channels = new Map<string, { channel: string; bills: number; amount: number }>();
   const slabs = new Map<string, { gstRate: number; taxableValue: number; cgst: number; sgst: number }>();
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, bills: 0, amount: 0 }));
 
@@ -75,6 +78,8 @@ export function buildSalesReport(orders: ReportOrder[]): SalesReport {
     const h = hours[istHour(o.billedAt)];
     h.bills++;
     h.amount += o.grandTotal;
+    const channel = o.channel ?? o.type;
+    bump(channels, channel, () => ({ channel, bills: 0, amount: 0 }), (v) => (v.bills++, (v.amount += o.grandTotal)));
     const waiter = o.waiterName ?? "Customer QR / unassigned";
     bump(staff, waiter, () => ({ name: waiter, bills: 0, amount: 0 }), (v) => (v.bills++, (v.amount += o.grandTotal)));
 
@@ -110,6 +115,7 @@ export function buildSalesReport(orders: ReportOrder[]): SalesReport {
     categories: [...categories.values()].sort((a, b) => b.amount - a.amount),
     hours: hours.filter((h) => h.bills > 0),
     staff: [...staff.values()].sort((a, b) => b.amount - a.amount),
+    channels: [...channels.values()].sort((a, b) => b.amount - a.amount),
     gstSlabs: [...slabs.values()].sort((a, b) => a.gstRate - b.gstRate),
   };
 }

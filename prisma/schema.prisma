@@ -77,6 +77,7 @@ enum PaymentMethod {
   UPI
   CARD
   RAZORPAY
+  AGGREGATOR // settled later by Zomato / Swiggy
   OTHER
 }
 
@@ -92,10 +93,20 @@ enum Plan {
   PRO
 }
 
+// A brand that owns one or more outlets. Owners can switch between their organisation's outlets.
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  createdAt   DateTime     @default(now())
+  restaurants Restaurant[]
+}
+
 model Restaurant {
-  id             String  @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
-  slug           String  @unique
+  slug           String       @unique
   phone          String?
   whatsappNumber String?
   email          String?
@@ -143,6 +154,19 @@ model Restaurant {
 
   reservationsEnabled Boolean @default(false) // public booking page
 
+  // Aggregators: commission % used for reports (orders are punched in manually)
+  zomatoCommission Decimal @default(25) @db.Decimal(5, 2)
+  swiggyCommission Decimal @default(25) @db.Decimal(5, 2)
+
+  // WhatsApp Business (Meta Cloud API). Template names must be approved in Meta Business Manager.
+  waPhoneNumberId    String?
+  waAccessTokenEnc   String?
+  waTemplateLang     String  @default("en")
+  waBillTemplate     String? // body params: {{1}} name, {{2}} restaurant, {{3}} amount, {{4}} bill link
+  waBookingTemplate  String? // {{1}} name, {{2}} restaurant, {{3}} date & time, {{4}} guests
+  waBirthdayTemplate String? // {{1}} name, {{2}} restaurant
+  waSummaryTemplate  String? // {{1}} restaurant, {{2}} date, {{3}} sales, {{4}} bills
+
   // Daily counters (reset each day, IST) and financial-year invoice series
   orderSeqDate    String?
   nextOrderNumber Int     @default(1)
@@ -160,20 +184,22 @@ model Restaurant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  categories   Category[]
-  menuItems    MenuItem[]
-  tables       DiningTable[]
-  orders       Order[]
-  kots         Kot[]
-  requests     ServiceRequest[]
-  auditLogs    AuditLog[]
-  dayCloses    DayClose[]
-  images       Image[]
-  ingredients  Ingredient[]
-  customers    Customer[]
-  reservations Reservation[]
-  attendance   Attendance[]
+  users                User[]
+  categories           Category[]
+  menuItems            MenuItem[]
+  tables               DiningTable[]
+  orders               Order[]
+  kots                 Kot[]
+  requests             ServiceRequest[]
+  auditLogs            AuditLog[]
+  dayCloses            DayClose[]
+  images               Image[]
+  ingredients          Ingredient[]
+  subscriptionPayments SubscriptionPayment[]
+  whatsappMessages     WhatsAppMessage[]
+  customers            Customer[]
+  reservations         Reservation[]
+  attendance           Attendance[]
 }
 
 model User {
@@ -309,6 +335,8 @@ model Order {
   tableName     String? // snapshot, survives table rename/delete
   waiterId      String?
   waiter        User?        @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
+  channel       String? // ZOMATO | SWIGGY for aggregator orders
+  channelRef    String? // aggregator's order id
   customerName  String?
   customerPhone String?
   customerId    String?
@@ -546,23 +574,25 @@ model StockMovement {
 // ---------- CRM & loyalty ----------
 
 model Customer {
-  id           String               @id @default(cuid())
-  restaurantId String
-  restaurant   Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  phone        String
-  name         String?
-  birthday     String? // MM-DD
-  anniversary  String? // MM-DD
-  notes        String?
-  visits       Int                  @default(0)
-  totalSpent   Decimal              @default(0) @db.Decimal(12, 2)
-  points       Int                  @default(0)
-  lastVisitAt  DateTime?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  orders       Order[]
-  loyalty      LoyaltyTransaction[]
-  reservations Reservation[]
+  id                  String               @id @default(cuid())
+  restaurantId        String
+  restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  phone               String
+  name                String?
+  birthday            String? // MM-DD
+  anniversary         String? // MM-DD
+  notes               String?
+  visits              Int                  @default(0)
+  totalSpent          Decimal              @default(0) @db.Decimal(12, 2)
+  points              Int                  @default(0)
+  lastVisitAt         DateTime?
+  lastBirthdayWish    Int? // year of the last automatic birthday message
+  lastAnniversaryWish Int?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  orders              Order[]
+  loyalty             LoyaltyTransaction[]
+  reservations        Reservation[]
 
   @@unique([restaurantId, phone])
 }
@@ -633,4 +663,51 @@ model Attendance {
 
   @@index([restaurantId, businessDate])
   @@index([userId, clockIn])
+}
+
+// ---------- SaaS subscription (restaurants pay the platform) ----------
+
+model SubscriptionPayment {
+  id                String     @id @default(cuid())
+  restaurantId      String
+  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  planCode          String // e.g. MONTHLY, YEARLY
+  months            Int
+  invoiceNumber     String     @unique
+  amount            Decimal    @db.Decimal(10, 2) // before tax
+  cgst              Decimal    @default(0) @db.Decimal(10, 2)
+  sgst              Decimal    @default(0) @db.Decimal(10, 2)
+  igst              Decimal    @default(0) @db.Decimal(10, 2)
+  total             Decimal    @db.Decimal(10, 2)
+  periodStart       DateTime
+  periodEnd         DateTime
+  razorpayOrderId   String?
+  razorpayPaymentId String?    @unique
+  method            String     @default("RAZORPAY") // RAZORPAY | MANUAL
+  note              String?
+  createdAt         DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+model PlatformCounter {
+  key   String @id // e.g. "invoice:26-27"
+  value Int
+}
+
+// ---------- WhatsApp automation log ----------
+
+model WhatsAppMessage {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  to           String
+  template     String
+  kind         String // BILL | BOOKING | BIRTHDAY | ANNIVERSARY | SUMMARY
+  status       String // SENT | FAILED
+  error        String?
+  providerId   String?
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
 }

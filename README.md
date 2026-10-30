@@ -63,9 +63,27 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Reservations (`/dashboard/reservations`) | Staff bookings, optional public booking page (`/m/<slug>/book`) with request → confirm flow and spam limits, table assignment with capacity warning, "Reserved 8 PM" on the table map, seat & start order, no-show/cancel, WhatsApp confirmation |
 | Attendance | Clock in/out for every staff member (sidebar or Overview). Manager view: today's status, month summary of days and hours, close forgotten shifts |
 
-## Roadmap
+## What's built (Phase 5): chains, SaaS billing, aggregators, automation & AI
 
-- **Phase 5:** Multi-outlet, subscription billing, aggregator integrations, AI insights
+| Area | Features |
+|---|---|
+| Multi-outlet (`/dashboard/outlets`) | Restaurants belong to an organisation. Owners add outlets (settings and menu copied), switch between them from the sidebar, see today/month sales and running orders per outlet, and copy menus between outlets (adds missing items only). Each outlet keeps its own tables, staff, stock, customers and subscription |
+| SaaS subscription (`/dashboard/billing`) | Per-outlet plans (monthly / 3 months / yearly, prices in `src/lib/plans.ts`), paid through **your** Razorpay account (`PLATFORM_RAZORPAY_*`). Signature and amount verified with Razorpay, no double credit. Renewals extend from the current expiry. GST tax invoice with CGST+SGST or IGST by place of supply, SAC 998314, series `SUB/26-27/0001`. Warnings 7 days before expiry; after a 3-day grace period new orders are blocked (data stays safe) |
+| Super admin (`/admin`) | Paying / trial / expired counts, revenue this month, manual plan extension for cash or bank payments (with invoice), recent subscription payments |
+| Zomato & Swiggy | POS buttons to punch aggregator orders with their order ID, so they reach the kitchen, stock and reports. Bills carry no GST or service charge (the platform pays GST under Section 9(5)) and are settled as "Paid by Zomato/Swiggy". Reports show sales by channel with estimated commission |
+| WhatsApp Business API | Per-restaurant Meta Cloud API setup (token encrypted). Automatic bill link after payment, booking confirmation, birthday/anniversary wishes (once a year) and the owner's daily summary, all with approved templates. Test button and a message log. Messages are sent after the response, so billing is never slowed down |
+| Daily job (`/api/cron/daily`) | Runs at 9 AM IST via Vercel Cron (`vercel.json`, `CRON_SECRET`): wishes, daily summaries, and closing shifts left open for more than 16 hours |
+| Insights (`/dashboard/insights`) | Week-on-week sales, average bill, busiest/slowest weekday, peak hour, trending dishes, slow sellers (after 3 weeks of history), high food cost, discount and cancellation alerts. **Stock forecast for tomorrow** from the same weekday over 4 weeks. Optional **AI summary** in Hinglish or English written by Claude (`ANTHROPIC_API_KEY`), cached per outlet per day |
+
+## Going live (Vercel + Supabase)
+
+1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.
+2. Import the repository in Vercel and set every variable from `.env.example` (generate `AUTH_SECRET`, `ENCRYPTION_KEY` and `CRON_SECRET` with `openssl rand -base64 32`; set `NEXT_PUBLIC_APP_URL` to your domain).
+3. Apply migrations once: `npm run db:deploy`, then `npm run db:seed` for the super admin.
+4. Vercel picks up the daily cron from `vercel.json`.
+5. To accept subscription payments, add your own Razorpay keys as `PLATFORM_RAZORPAY_KEY_ID` / `PLATFORM_RAZORPAY_KEY_SECRET` and your GST details as `PLATFORM_*`.
+
+Run the test suite against a separate database: the integration tests create and delete their own data, but they do advance the shared subscription invoice counter.
 
 ## Local setup
 

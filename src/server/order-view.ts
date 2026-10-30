@@ -33,6 +33,8 @@ export interface OrderView {
   publicToken: string;
   status: "OPEN" | "BILLED" | "PAID" | "CANCELLED";
   type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
+  channel: "ZOMATO" | "SWIGGY" | null;
+  channelRef: string | null;
   source: "QR" | "STAFF";
   tableId: string | null;
   tableName: string | null;
@@ -81,11 +83,11 @@ export function billFor(order: Order & { kots: (Kot & { items: OrderItem[] })[] 
       grandTotal: toPaise(order.grandTotal!),
     };
   }
-  // Running bill: accepted items only, with the restaurant's current settings.
+  // Running bill: accepted items only, with the restaurant's current settings (no GST for aggregator orders).
   const items = order.kots.filter((k) => k.status === "ACCEPTED").flatMap((k) => k.items);
   const b = orderBill(
     items,
-    { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled ? r.serviceChargeRate : 0 },
+    { gstEnabled: r.gstEnabled && !order.channel, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled && !order.channel ? r.serviceChargeRate : 0 },
     { type: order.discountType, value: order.discountValue },
     toPaise(order.pointsRedeemValue),
   );
@@ -99,6 +101,8 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
     publicToken: order.publicToken,
     status: order.status,
     type: order.type,
+    channel: (order.channel as "ZOMATO" | "SWIGGY" | null) ?? null,
+    channelRef: order.channelRef,
     source: order.source,
     tableId: order.tableId,
     tableName: order.tableName,

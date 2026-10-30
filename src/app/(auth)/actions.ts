@@ -51,6 +51,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     const restaurant = await tx.restaurant.create({
       data: {
         name: data.restaurantName,
+        organization: { create: { name: data.restaurantName } },
         slug,
         phone: data.phone,
         whatsappNumber: data.phone,

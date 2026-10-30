@@ -5,6 +5,7 @@ import { buildCartLine, validateAddons, type MenuItemData } from "@/lib/cart";
 import { toPaise } from "@/lib/gst";
 import { formatInvoiceNumber, financialYear, istDate } from "@/lib/numbering";
 import { orderBill, paiseToRupees } from "@/lib/order-bill";
+import { subscriptionStatus } from "@/lib/plans";
 import { onBilled, onPaid, refundPoints } from "./customers";
 import { consumeItems, returnItems } from "./inventory";
 
@@ -122,6 +123,8 @@ export interface PlaceItemsInput {
     waiterId?: string | null;
     customerName?: string | null;
     customerPhone?: string | null;
+    channel?: "ZOMATO" | "SWIGGY" | null;
+    channelRef?: string | null;
   };
   lines: LineInput[];
   kotStatus: KotStatus;
@@ -142,6 +145,11 @@ export async function placeItems(input: PlaceItemsInput) {
   }
   return db.$transaction(async (tx) => {
     const restaurant = await tx.restaurant.findUniqueOrThrow({ where: { id: input.restaurantId } });
+    if (subscriptionStatus(restaurant.planExpiresAt).state === "EXPIRED") {
+      throw new OrderError(
+        input.newOrder?.source === "QR" ? "Ordering is unavailable right now. Please ask the staff." : "Your subscription has expired. Renew it in Billing to take new orders.",
+      );
+    }
     let order = input.orderId
       ? await tx.order.findFirst({ where: { id: input.orderId, restaurantId: input.restaurantId } })
       : null;
@@ -175,6 +183,8 @@ export async function placeItems(input: PlaceItemsInput) {
           waiterId: n.waiterId ?? null,
           customerName: n.customerName?.trim() || null,
           customerPhone: n.customerPhone?.trim() || null,
+          channel: table ? null : (n.channel ?? null),
+          channelRef: table ? null : n.channelRef?.trim() || null,
         },
       });
     } else if (input.newOrder?.customerName && !order.customerName) {
@@ -276,10 +286,14 @@ export async function generateBill(restaurantId: string, orderId: string) {
     if (!billable.some((i) => i.status !== "CANCELLED")) throw new OrderError("There are no items to bill");
 
     const r = await tx.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
-    const serviceChargeRate = r.serviceChargeEnabled ? r.serviceChargeRate : 0;
+    // Zomato/Swiggy collect and pay GST on restaurant orders themselves (Section 9(5), CGST Act),
+    // so the restaurant's bill for these carries no GST and no service charge.
+    const aggregator = !!order.channel;
+    const serviceChargeRate = !aggregator && r.serviceChargeEnabled ? r.serviceChargeRate : 0;
+    const gstEnabled = r.gstEnabled && !aggregator;
     const bill = orderBill(
       billable,
-      { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate },
+      { gstEnabled, gstMode: r.gstMode, serviceChargeRate },
       { type: order.discountType, value: order.discountValue },
       toPaise(order.pointsRedeemValue),
     );
@@ -290,7 +304,7 @@ export async function generateBill(restaurantId: string, orderId: string) {
         status: "BILLED",
         billedAt: new Date(),
         invoiceNumber: order.invoiceNumber ?? (await nextInvoiceNumber(tx, restaurantId)),
-        gstEnabled: r.gstEnabled,
+        gstEnabled,
         gstMode: r.gstMode,
         serviceChargeRate,
         subtotal: paiseToRupees(bill.subtotal),
@@ -328,7 +342,7 @@ export async function recordPayment(
   restaurantId: string,
   orderId: string,
   payment: {
-    method: "CASH" | "UPI" | "CARD" | "RAZORPAY" | "OTHER";
+    method: "CASH" | "UPI" | "CARD" | "RAZORPAY" | "AGGREGATOR" | "OTHER";
     amountPaise: number;
     reference?: string | null;
     razorpayOrderId?: string;

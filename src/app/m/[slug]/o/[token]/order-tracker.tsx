@@ -9,28 +9,12 @@ import { formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 import { useLiveRefresh } from "@/hooks/use-live";
+import { loadRazorpay } from "@/lib/client/razorpay-checkout";
 import type { OrderView } from "@/server/order-view";
 import { confirmRazorpayPayment, requestService, startRazorpayPayment } from "../../../actions";
 
 const STATUS_TEXT = { NEW: "Order received", PREPARING: "Being prepared", READY: "Ready", SERVED: "Served", CANCELLED: "Cancelled" };
 const STATUS_COLOR = { NEW: "text-stone-500", PREPARING: "text-amber-600", READY: "text-green-600", SERVED: "text-stone-400", CANCELLED: "text-red-500" };
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open(): void };
-  }
-}
-
-function loadRazorpay(): Promise<boolean> {
-  if (window.Razorpay) return Promise.resolve(true);
-  return new Promise((resolve) => {
-    const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
-  });
-}
 
 export function OrderTracker({
   order,

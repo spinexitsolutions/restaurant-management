@@ -1,4 +1,5 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
+import { notifyBillPaid } from "@/server/whatsapp";
 import { decrypt } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { verifyWebhookSignature } from "@/lib/razorpay";
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ res
       razorpayOrderId: payment.order_id,
       razorpayPaymentId: payment.id,
     });
+    after(() => notifyBillPaid(orderId));
   } catch (e) {
     // Already paid / not billed: acknowledge so Razorpay stops retrying.
     if (!(e instanceof OrderError)) throw e;

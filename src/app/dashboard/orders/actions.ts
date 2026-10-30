@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyBillPaid } from "@/server/whatsapp";
 import { z } from "zod";
 import { requireRestaurantSession } from "@/lib/auth";
 import { toPaise } from "@/lib/gst";
@@ -56,6 +58,8 @@ const sendKotSchema = z.object({
   tableId: z.string().nullable().optional(),
   customerName: z.string().max(60).optional(),
   customerPhone: z.union([z.literal(""), z.string().regex(/^[6-9]\d{9}$/, "Enter a 10-digit mobile number")]).optional(),
+  channel: z.enum(["ZOMATO", "SWIGGY"]).nullable().optional(),
+  channelRef: z.string().max(40).optional(),
   note: z.string().max(200).optional(),
   lines: z.array(lineSchema).min(1, "Add at least one item").max(50),
   clientRequestId: z.string().max(64).optional(),
@@ -76,6 +80,8 @@ export async function sendKot(input: z.input<typeof sendKotSchema>): Promise<Act
         waiterId: session.userId,
         customerName: d.customerName,
         customerPhone: d.customerPhone,
+        channel: d.channel ?? null,
+        channelRef: d.channelRef,
       },
       lines: d.lines,
       kotStatus: "ACCEPTED",
@@ -159,7 +165,7 @@ export async function reopenOrder(orderId: string, pin?: string) {
 }
 
 const paymentSchema = z.object({
-  method: z.enum(["CASH", "UPI", "CARD", "OTHER"]),
+  method: z.enum(["CASH", "UPI", "CARD", "AGGREGATOR", "OTHER"]),
   amount: z.number().positive("Enter an amount").max(10_000_000),
   reference: z.string().max(80).optional(),
   clientRequestId: z.string().max(64).optional(),
@@ -176,6 +182,7 @@ export async function takePayment(orderId: string, input: z.input<typeof payment
       receivedById: s.userId,
       clientRequestId: d.clientRequestId,
     });
+    if (order.status === "PAID") after(() => notifyBillPaid(orderId));
     return { status: order.status };
   });
 }

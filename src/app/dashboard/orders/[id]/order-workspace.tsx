@@ -65,7 +65,7 @@ type Act = <T>(fn: (pin?: string) => Promise<ActionResult<T>>, after?: (data: T 
 export function OrderWorkspace(props: {
   floorTables: FloorTableOption[];
   order: OrderView | null;
-  context: { tableId: string | null; tableName: string | null; type: "DINE_IN" | "TAKEAWAY" | "DELIVERY" };
+  context: { tableId: string | null; tableName: string | null; type: "DINE_IN" | "TAKEAWAY" | "DELIVERY"; channel: "ZOMATO" | "SWIGGY" | null };
   menu: PickerCategory[];
   restaurant: WorkspaceRestaurant;
   canBill: boolean;
@@ -77,6 +77,8 @@ export function OrderWorkspace(props: {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [kotNote, setKotNote] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "" });
+  const [channelRef, setChannelRef] = useState("");
+  const channelName = context.channel === "ZOMATO" ? "Zomato" : context.channel === "SWIGGY" ? "Swiggy" : null;
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [tab, setTab] = useState<"menu" | "order">("menu");
@@ -84,7 +86,15 @@ export function OrderWorkspace(props: {
 
   const status = order?.status ?? "OPEN";
   const editable = status === "OPEN";
-  const title = context.tableName ? `Table ${context.tableName}` : order ? `${order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${order.orderNumber}` : "New takeaway";
+  const title = context.tableName
+    ? `Table ${context.tableName}`
+    : channelName
+      ? `${channelName} ${order?.channelRef ? `#${order.channelRef}` : order ? `· order ${order.orderNumber}` : "order"}`
+      : order
+        ? `${order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${order.orderNumber}`
+        : context.type === "DELIVERY"
+          ? "New delivery"
+          : "New takeaway";
 
   // Runs an action; if the server asks for a manager PIN, shows the PIN dialog and retries with it.
   const act: Act = (fn, after) => {
@@ -108,6 +118,8 @@ export function OrderWorkspace(props: {
       type: context.type,
       customerName: customer.name || undefined,
       customerPhone: customer.phone || undefined,
+      channel: context.channel,
+      channelRef: channelRef || undefined,
       note: kotNote || undefined,
       lines: cart.map((l) => ({ itemId: l.itemId, variantId: l.variantId, addonIds: l.addonIds, quantity: l.quantity })),
       clientRequestId: newRequestId(),
@@ -208,7 +220,10 @@ export function OrderWorkspace(props: {
                   ))}
                 </ul>
                 <Input className="mt-3" placeholder="Kitchen note (e.g. less spicy)" value={kotNote} onChange={(e) => setKotNote(e.target.value)} maxLength={200} />
-                {!order && !context.tableId && (
+                {!order && channelName && (
+                  <Input className="mt-2" placeholder={`${channelName} order ID`} value={channelRef} onChange={(e) => setChannelRef(e.target.value)} maxLength={40} />
+                )}
+                {!order && !context.tableId && !channelName && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <Input placeholder="Customer name" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} />
                     <Input placeholder="Mobile" inputMode="numeric" maxLength={10} value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} />
@@ -360,7 +375,8 @@ function BillingPanel({
   const due = order.bill.grandTotal - order.paid;
   const [discountType, setDiscountType] = useState<"PERCENT" | "FLAT">(order.discount?.type ?? "PERCENT");
   const [discountValue, setDiscountValue] = useState(order.discount ? String(order.discount.value) : "");
-  const [method, setMethod] = useState<"CASH" | "UPI" | "CARD" | "OTHER">(restaurant.upiId ? "UPI" : "CASH");
+  const channelName = order.channel === "ZOMATO" ? "Zomato" : order.channel === "SWIGGY" ? "Swiggy" : null;
+  const [method, setMethod] = useState<"CASH" | "UPI" | "CARD" | "AGGREGATOR" | "OTHER">(channelName ? "AGGREGATOR" : restaurant.upiId ? "UPI" : "CASH");
   const [amount, setAmount] = useState((due / 100).toFixed(2));
   const [tendered, setTendered] = useState("");
   const [reference, setReference] = useState("");
@@ -384,7 +400,8 @@ function BillingPanel({
   if (order.status === "OPEN") {
     return (
       <div className="space-y-3 rounded-lg ring-1 ring-stone-200 p-3">
-        <CustomerBox order={order} restaurant={restaurant} pending={pending} onAct={onAct} />
+        {!order.channel && <CustomerBox order={order} restaurant={restaurant} pending={pending} onAct={onAct} />}
+        {order.channel && <p className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">No GST on this bill: Zomato/Swiggy pay GST on restaurant orders (Section 9(5)).</p>}
         <p className="text-sm font-semibold">Discount</p>
         <div className="flex gap-2">
           <Select className="w-24" value={discountType} onChange={(e) => setDiscountType(e.target.value as "PERCENT" | "FLAT")}>
@@ -462,7 +479,7 @@ function BillingPanel({
             </select>
           </div>
           <div className="grid grid-cols-4 gap-1">
-            {(["CASH", "UPI", "CARD", "OTHER"] as const)
+            {(channelName ? (["AGGREGATOR", "CASH", "UPI", "OTHER"] as const) : (["CASH", "UPI", "CARD", "OTHER"] as const))
               .filter((m) => (m === "CASH" ? restaurant.acceptCash : m === "CARD" ? restaurant.acceptCard : true))
               .map((m) => (
                 <button
@@ -470,7 +487,7 @@ function BillingPanel({
                   onClick={() => setMethod(m)}
                   className={cn("rounded-lg py-2 text-xs font-semibold", method === m ? "bg-stone-900 text-white" : "bg-stone-100 text-stone-700")}
                 >
-                  {m}
+                  {m === "AGGREGATOR" ? channelName : m}
                 </button>
               ))}
           </div>

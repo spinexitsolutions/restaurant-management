@@ -15,7 +15,8 @@ describe.skipIf(!hasDb)("order lifecycle", () => {
 
   beforeAll(async () => {
     const r = await db.restaurant.create({
-      data: { name: "Test Kitchen", slug: `test-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z5", gstMode: "EXCLUSIVE", defaultGstRate: 5 },
+      data: {
+        organization: { create: { name: "Test org" } }, name: "Test Kitchen", slug: `test-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z5", gstMode: "EXCLUSIVE", defaultGstRate: 5 },
     });
     restaurantId = r.id;
     tableId = (await db.diningTable.create({ data: { restaurantId, name: "T1" } })).id;
@@ -40,7 +41,7 @@ describe.skipIf(!hasDb)("order lifecycle", () => {
   });
 
   afterAll(async () => {
-    if (restaurantId) await db.restaurant.delete({ where: { id: restaurantId } });
+    if (restaurantId) await db.organization.deleteMany({ where: { restaurants: { some: { id: restaurantId } } } });
     await db.$disconnect();
   });
 

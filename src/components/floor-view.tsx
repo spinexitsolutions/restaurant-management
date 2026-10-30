@@ -131,7 +131,7 @@ export function OtherOrders({ orders }: { orders: FloorOrder[] }) {
         <li key={o.id}>
           <Link href={`/dashboard/orders/${o.id}`} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-stone-200 hover:ring-brand-500">
             <span>
-              <span className="font-semibold">#{o.orderNumber}</span> {o.tableName ? `Table ${o.tableName}` : o.type === "DELIVERY" ? "Delivery" : "Takeaway"}
+              <span className="font-semibold">#{o.orderNumber}</span> {o.tableName ? `Table ${o.tableName}` : o.channel ? (o.channel === "ZOMATO" ? "Zomato" : "Swiggy") : o.type === "DELIVERY" ? "Delivery" : "Takeaway"}
               {o.customerName && <span className="text-stone-500"> · {o.customerName}</span>}
               {o.readyCount > 0 && <span className="ml-2 text-green-700">· ready</span>}
             </span>

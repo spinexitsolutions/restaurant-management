@@ -1,6 +1,8 @@
 "use server";
 
+import { after } from "next/server";
 import { z } from "zod";
+import { notifyBillPaid } from "@/server/whatsapp";
 import { decrypt } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/gst";
@@ -118,6 +120,7 @@ export async function confirmRazorpayPayment(token: string, input: z.input<typeo
     // Take the amount from Razorpay, and make sure that Razorpay order was created for this bill.
     const rzpOrder = await fetchRazorpayOrder({ keyId: order.restaurant.razorpayKeyId!, keySecret, razorpayOrderId: d.razorpay_order_id });
     if (rzpOrder.notes?.orderId !== order.id) throw new OrderError("This payment belongs to a different order");
+    after(() => notifyBillPaid(order.id));
     await recordPayment(order.restaurantId, order.id, {
       method: "RAZORPAY",
       amountPaise: rzpOrder.amount_paid,
