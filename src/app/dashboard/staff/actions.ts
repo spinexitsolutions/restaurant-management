@@ -78,3 +78,15 @@ export async function resetStaffPassword(id: string, password: string): Promise<
   await db.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
   return { ok: "Password changed" };
 }
+
+/** Owners and managers set their own approval PIN, used to approve discounts and cancellations. */
+export async function setMyPin(_: FormState, formData: FormData): Promise<FormState> {
+  const session = await requireRestaurantSession(MANAGE_ROLES);
+  const pin = String(formData.get("pin") ?? "");
+  if (!/^\d{4,6}$/.test(pin)) return { error: "PIN must be 4 to 6 digits" };
+  if (/^(\d)\1+$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) {
+    return { error: "Choose a PIN that is harder to guess" };
+  }
+  await db.user.update({ where: { id: session.userId }, data: { pinHash: await bcrypt.hash(pin, 10) } });
+  return { ok: "Approval PIN saved" };
+}

@@ -34,8 +34,18 @@ export default async function OrderPage({ params, searchParams }: Props) {
     context = { tableId: order.tableId, tableName: order.tableName, type: order.type };
   }
 
+  const [tables, running] = await Promise.all([
+    db.diningTable.findMany({ where: { restaurantId: restaurant.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true, name: true } }),
+    db.order.findMany({ where: { restaurantId: restaurant.id, status: { in: ["OPEN", "BILLED"] }, tableId: { not: null } }, select: { id: true, tableId: true, orderNumber: true, status: true } }),
+  ]);
+  const byTable = new Map(running.map((o) => [o.tableId, o]));
+
   return (
     <OrderWorkspace
+      floorTables={tables.map((t) => {
+        const o = byTable.get(t.id);
+        return { id: t.id, name: t.name, orderId: o?.id ?? null, orderNumber: o?.orderNumber ?? null, orderStatus: o?.status ?? null };
+      })}
       order={order}
       context={context}
       menu={await loadMenu(restaurant.id, Number(restaurant.defaultGstRate))}

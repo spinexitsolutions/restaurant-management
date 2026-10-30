@@ -3,7 +3,7 @@
 import { useActionState, useTransition } from "react";
 import { Field, FormMessage, Input, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { createStaff, resetStaffPassword, setStaffRole, toggleStaffActive } from "./actions";
+import { createStaff, resetStaffPassword, setMyPin, setStaffRole, toggleStaffActive } from "./actions";
 
 export function AddStaffForm({ canAddManager }: { canAddManager: boolean }) {
   const [state, action] = useActionState(createStaff, null);
@@ -79,5 +79,18 @@ export function StaffRowControls(props: { id: string; role: string; isActive: bo
         {props.isActive ? "Deactivate" : "Activate"}
       </button>
     </div>
+  );
+}
+
+export function PinForm({ hasPin }: { hasPin: boolean }) {
+  const [state, action] = useActionState(setMyPin, null);
+  return (
+    <form action={action} className="flex flex-wrap items-end gap-3">
+      <Field label={hasPin ? "Change your PIN" : "Set your PIN"}>
+        <Input name="pin" type="password" inputMode="numeric" pattern="[0-9]{4,6}" minLength={4} maxLength={6} required className="w-36" autoComplete="off" />
+      </Field>
+      <SubmitButton>{hasPin ? "Update PIN" : "Save PIN"}</SubmitButton>
+      <FormMessage state={state} />
+    </form>
   );
 }

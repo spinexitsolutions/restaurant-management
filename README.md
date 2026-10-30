@@ -38,9 +38,20 @@ Staff land on their own screen after login: chef → Kitchen, waiter → Tables,
 
 In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razorpay/<restaurantId>` (shown in Settings → Razorpay) for the `payment.captured` event, and paste the same secret in Settings. Payments then get recorded even if the customer closes the page.
 
+## What's built (Phase 3): control, reports & resilience
+
+| Area | Features |
+|---|---|
+| Manager PIN | Owners/managers set a 4–6 digit PIN (Staff page). Cashiers and waiters need it for discounts, reopening bills, cancelling whole orders, and cancelling food the kitchen already started. Wrong PINs are throttled (5 tries, then a 5 min lock). Can be turned off in Settings |
+| Audit log | Discounts, cancellations, reopened bills, rejected QR orders, table moves/merges/splits and day closes, with who did it and who approved (Reports → Audit log) |
+| Tables | **Move** an order to a free table, **merge** another running table into this bill, **split** chosen items (even part of a quantity) into a separate bill, and "split equally" between N people when collecting payment |
+| Reports | Any date range (presets: today, yesterday, 7 days, this month): net sales, bills, average bill, discounts, GST, payment methods, GST rate summary, sales by hour, categories, best-selling items, staff. **Sales register CSV** (invoice-wise, Excel-ready) for the accountant |
+| Day close | Collections by payment method, opening cash (carried from the last close), expected vs counted cash with short/excess, cash taken out, note, history, and a WhatsApp summary for the owner |
+| Photos | Upload menu photos and logo. Images are resized in the browser (WebP) and stored in the database, so it works on any host without extra storage setup |
+| Offline & PWA | Installable app (Add to Home Screen). Pages already opened keep working offline. KOTs and payments made offline are queued on the device and synced automatically when the internet returns, without duplicates (each carries a request id) |
+
 ## Roadmap
 
-- **Phase 3:** Offline POS (PWA), split/merge/transfer tables, manager PIN for discounts and cancellations, reports and day-end closing, photo upload
 - **Phase 4:** Inventory & recipes, CRM & loyalty, reservations, attendance
 - **Phase 5:** Multi-outlet, subscription billing, aggregator integrations, AI insights
 
@@ -80,3 +91,5 @@ Note: free Supabase projects pause after a period of inactivity. Use a paid plan
 - Every query is scoped by `restaurantId` from the server-side session; nothing trusts a restaurant id from the client.
 - Sessions are signed JWTs in httpOnly cookies. User role and active status are re-checked against the database on each request.
 - Razorpay secrets are encrypted with `ENCRYPTION_KEY` and never sent to the browser. Changing `ENCRYPTION_KEY` makes saved secrets unreadable.
+- Approval PINs are bcrypt-hashed. Money-related actions by non-managers are recorded in the audit log with the approver's name.
+- Offline mode only queues new KOTs and payments. Billing, discounts and cancellations need a connection so approvals and invoice numbers stay consistent.

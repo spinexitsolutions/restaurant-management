@@ -26,7 +26,7 @@ const profileSchema = z.object({
   state: optional(60),
   pincode: z.union([z.literal(""), z.string().trim().regex(/^\d{6}$/, "PIN code must be 6 digits")]).transform((s) => s || null),
   fssaiNumber: z.union([z.literal(""), z.string().trim().regex(/^\d{14}$/, "FSSAI licence number must be 14 digits")]).transform((s) => s || null),
-  logoUrl: z.union([z.literal(""), z.string().trim().url("Logo must be a valid URL")]).transform((s) => s || null),
+  logoUrl: z.union([z.literal(""), z.string().trim().regex(/^\/api\/images\/[a-z0-9]+$/), z.string().trim().url("Logo must be a valid URL")]).transform((s) => s || null),
 });
 
 export async function saveProfile(_: FormState, formData: FormData): Promise<FormState> {
@@ -47,6 +47,7 @@ const gstSchema = z.object({
   defaultGstRate: z.coerce.number().min(0).max(28),
   serviceChargeEnabled: checkbox,
   serviceChargeRate: z.coerce.number().min(0, "Service charge can't be negative").max(20, "Service charge can be at most 20%"),
+  requireManagerPin: checkbox,
   invoicePrefix: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{1,5}$/, "Invoice prefix: up to 5 letters or numbers (GST invoice numbers are limited to 16 characters)"),
 });
 

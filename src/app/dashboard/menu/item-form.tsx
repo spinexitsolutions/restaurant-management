@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Card, Field, FormMessage, Input, Select, Textarea } from "@/components/ui";
 import { saveItem, type ItemInput } from "./actions";
+import { ImageUpload } from "@/components/image-upload";
 
 type Variant = { name: string; price: string };
 type AddonOption = { name: string; price: string };
@@ -100,7 +101,7 @@ export function ItemForm({
             <Input type="number" min={0} max={28} step="0.01" value={v.gstRate} onChange={(e) => set("gstRate", e.target.value)} placeholder={defaultGstRate} />
           </Field>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Spice level">
             <Select value={v.spiceLevel} onChange={(e) => set("spiceLevel", e.target.value)}>
               <option value="0">Not spicy</option>
@@ -112,10 +113,11 @@ export function ItemForm({
           <Field label="Prep time (minutes)">
             <Input type="number" min={1} max={240} value={v.prepTimeMinutes} onChange={(e) => set("prepTimeMinutes", e.target.value)} />
           </Field>
-          <Field label="Image URL" hint="Photo upload is coming soon">
-            <Input type="url" value={v.imageUrl} onChange={(e) => set("imageUrl", e.target.value)} placeholder="https://..." />
-          </Field>
+
         </div>
+        <Field label="Photo">
+          <ImageUpload value={v.imageUrl} onChange={(url) => set("imageUrl", url)} />
+        </Field>
         <div className="flex flex-wrap gap-6 text-sm">
           <label className="flex items-center gap-2">
             <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={v.isAvailable} onChange={(e) => set("isAvailable", e.target.checked)} />

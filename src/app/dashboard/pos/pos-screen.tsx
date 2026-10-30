@@ -67,7 +67,7 @@ export function PosScreen({
           </div>
         </div>
         <div>
-          <h2 className="mb-2 text-sm font-semibold text-stone-500">Takeaway &amp; delivery</h2>
+          <h2 className="mb-2 text-sm font-semibold text-stone-500">Takeaway, delivery &amp; split bills</h2>
           <OtherOrders orders={others} />
         </div>
       </div>

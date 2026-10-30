@@ -62,7 +62,7 @@ const itemSchema = z.object({
   name: z.string().trim().min(1, "Enter the item name").max(80),
   description: z.string().trim().max(300).optional().default(""),
   price: money,
-  imageUrl: z.union([z.literal(""), z.string().trim().url("Image must be a valid URL")]).optional().default(""),
+  imageUrl: z.union([z.literal(""), z.string().trim().regex(/^\/api\/images\/[a-z0-9]+$/), z.string().trim().url("Image must be a valid URL")]).optional().default(""),
   foodType: z.enum(["VEG", "NON_VEG", "EGG"]),
   gstRate: z.union([z.literal(""), z.coerce.number().min(0).max(28)]).optional().default(""),
   isAvailable: z.boolean(),

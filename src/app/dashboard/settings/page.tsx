@@ -51,6 +51,7 @@ export default async function SettingsPage() {
               serviceChargeEnabled: r.serviceChargeEnabled,
               serviceChargeRate: r.serviceChargeRate.toString(),
               invoicePrefix: r.invoicePrefix,
+              requireManagerPin: r.requireManagerPin,
             }}
           />
           <div id="payments" className="scroll-mt-6 space-y-6">

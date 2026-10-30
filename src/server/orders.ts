@@ -124,6 +124,7 @@ export interface PlaceItemsInput {
   kotStatus: KotStatus;
   createdById: string | null;
   note?: string | null;
+  clientRequestId?: string;
 }
 
 /**
@@ -131,6 +132,11 @@ export interface PlaceItemsInput {
  * running order, so items for an occupied table are appended to it.
  */
 export async function placeItems(input: PlaceItemsInput) {
+  if (input.clientRequestId) {
+    // An offline device retrying a KOT it already sent: return the original.
+    const existing = await db.kot.findUnique({ where: { clientRequestId: input.clientRequestId }, include: { order: true } });
+    if (existing && existing.restaurantId === input.restaurantId) return { order: existing.order, kot: existing };
+  }
   return db.$transaction(async (tx) => {
     const restaurant = await tx.restaurant.findUniqueOrThrow({ where: { id: input.restaurantId } });
     let order = input.orderId
@@ -177,6 +183,7 @@ export async function placeItems(input: PlaceItemsInput) {
         restaurantId: input.restaurantId,
         orderId: order.id,
         kotNumber: await nextDailyNumber(tx, input.restaurantId, "kot"),
+        clientRequestId: input.clientRequestId,
         status: input.kotStatus,
         note: input.note?.trim().slice(0, 200) || null,
         createdById: input.createdById,
@@ -313,9 +320,14 @@ export async function recordPayment(
     razorpayOrderId?: string;
     razorpayPaymentId?: string;
     receivedById?: string | null;
+    clientRequestId?: string;
   },
 ) {
   return db.$transaction(async (tx) => {
+    if (payment.clientRequestId) {
+      const existing = await tx.payment.findUnique({ where: { clientRequestId: payment.clientRequestId }, include: { order: true } });
+      if (existing) return existing.order;
+    }
     await tx.$executeRaw`SELECT 1 FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
     const order = await tx.order.findFirst({ where: { id: orderId, restaurantId }, include: { payments: true } });
     if (!order) throw new OrderError("Order not found");
@@ -337,6 +349,7 @@ export async function recordPayment(
         razorpayOrderId: payment.razorpayOrderId,
         razorpayPaymentId: payment.razorpayPaymentId,
         receivedById: payment.receivedById ?? null,
+        clientRequestId: payment.clientRequestId,
       },
     });
     const updated =
@@ -377,5 +390,118 @@ export async function resolveServiceRequest(restaurantId: string, id: string) {
   return db.$transaction(async (tx) => {
     await tx.serviceRequest.updateMany({ where: { id, restaurantId, resolvedAt: null }, data: { resolvedAt: new Date() } });
     await bumpLive(tx, restaurantId);
+  });
+}
+
+async function lockedRunningOrder(tx: Tx, restaurantId: string, orderId: string) {
+  await tx.$executeRaw`SELECT 1 FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
+  const order = await tx.order.findFirst({ where: { id: orderId, restaurantId }, include: { _count: { select: { payments: true } } } });
+  if (!order) throw new OrderError("Order not found");
+  return order;
+}
+
+/** Moves a running order to a free table. */
+export async function transferOrder(restaurantId: string, orderId: string, toTableId: string) {
+  return db.$transaction(async (tx) => {
+    const order = await lockedRunningOrder(tx, restaurantId, orderId);
+    if (order.status !== "OPEN" && order.status !== "BILLED") throw new OrderError("This order is closed");
+    const table = await tx.diningTable.findFirst({ where: { id: toTableId, restaurantId } });
+    if (!table) throw new OrderError("Table not found");
+    await tx.$executeRaw`SELECT 1 FROM "DiningTable" WHERE id = ${table.id} FOR UPDATE`;
+    const busy = await tx.order.findFirst({ where: { tableId: table.id, status: { in: ["OPEN", "BILLED"] } } });
+    if (busy) throw new OrderError(`Table ${table.name} already has a running order. Use merge instead.`);
+    await tx.order.update({ where: { id: orderId }, data: { tableId: table.id, tableName: table.name, type: "DINE_IN" } });
+    if (order.tableId) await tx.serviceRequest.updateMany({ where: { tableId: order.tableId, resolvedAt: null }, data: { resolvedAt: new Date() } });
+    await bumpLive(tx, restaurantId);
+    return { from: order.tableName, to: table.name };
+  });
+}
+
+/** Moves every item of `sourceId` into `targetId` and closes the source order. */
+export async function mergeOrders(restaurantId: string, targetId: string, sourceId: string) {
+  if (targetId === sourceId) throw new OrderError("Pick a different order to merge");
+  return db.$transaction(async (tx) => {
+    const [target, source] = [await lockedRunningOrder(tx, restaurantId, targetId), await lockedRunningOrder(tx, restaurantId, sourceId)];
+    for (const o of [target, source]) {
+      if (o.status !== "OPEN") throw new OrderError(`Order #${o.orderNumber} is already billed. Reopen it first.`);
+      if (o._count.payments > 0) throw new OrderError(`Order #${o.orderNumber} has a payment recorded`);
+    }
+    // The source's discount would silently disappear, so make staff decide explicitly.
+    if (source.discountValue && Number(source.discountValue) > 0) {
+      throw new OrderError(`Order #${source.orderNumber} has a discount. Remove it first, then merge and apply the discount again.`);
+    }
+    await tx.kot.updateMany({ where: { orderId: sourceId }, data: { orderId: targetId } });
+    await tx.orderItem.updateMany({ where: { orderId: sourceId }, data: { orderId: targetId } });
+    await tx.order.update({
+      where: { id: sourceId },
+      data: { status: "CANCELLED", cancelReason: `Merged into order #${target.orderNumber}${target.tableName ? ` (Table ${target.tableName})` : ""}` },
+    });
+    if (source.tableId) await tx.serviceRequest.updateMany({ where: { tableId: source.tableId, resolvedAt: null }, data: { resolvedAt: new Date() } });
+    await bumpLive(tx, restaurantId);
+    return { target: target.orderNumber, source: source.orderNumber };
+  });
+}
+
+/**
+ * Moves the chosen quantities of items into a new order so they can be billed separately.
+ * The new order keeps the table name but is not linked to the table, so the table keeps one running order.
+ */
+export async function splitOrder(restaurantId: string, orderId: string, parts: { itemId: string; quantity: number }[], createdById: string) {
+  return db.$transaction(async (tx) => {
+    const order = await lockedRunningOrder(tx, restaurantId, orderId);
+    if (order.status !== "OPEN") throw new OrderError("Reopen the bill before splitting");
+    const items = await tx.orderItem.findMany({ where: { orderId, status: { not: "CANCELLED" }, kot: { status: "ACCEPTED" } } });
+    const byId = new Map(items.map((i) => [i.id, i]));
+    const chosen = parts.filter((p) => p.quantity > 0);
+    if (chosen.length === 0) throw new OrderError("Choose items to move to the new bill");
+
+    let remaining = items.reduce((s, i) => s + i.quantity, 0);
+    for (const p of chosen) {
+      const item = byId.get(p.itemId);
+      if (!item || !Number.isInteger(p.quantity) || p.quantity > item.quantity) throw new OrderError("Invalid item or quantity");
+      remaining -= p.quantity;
+    }
+    if (remaining <= 0) throw new OrderError("Leave at least one item on the original bill");
+
+    const split = await tx.order.create({
+      data: {
+        restaurantId,
+        orderNumber: await nextDailyNumber(tx, restaurantId, "order"),
+        type: order.type,
+        source: "STAFF",
+        tableName: order.tableName ? `${order.tableName} (split)` : null,
+        waiterId: order.waiterId,
+        note: `Split from order #${order.orderNumber}`,
+      },
+    });
+    const kot = await tx.kot.create({
+      data: { restaurantId, orderId: split.id, kotNumber: 0, status: "ACCEPTED", note: `Moved from order #${order.orderNumber}`, createdById },
+    });
+    for (const p of chosen) {
+      const item = byId.get(p.itemId)!;
+      if (p.quantity === item.quantity) {
+        await tx.orderItem.update({ where: { id: item.id }, data: { orderId: split.id, kotId: kot.id } });
+      } else {
+        await tx.orderItem.update({ where: { id: item.id }, data: { quantity: item.quantity - p.quantity } });
+        await tx.orderItem.create({
+          data: {
+            orderId: split.id,
+            kotId: kot.id,
+            quantity: p.quantity,
+            menuItemId: item.menuItemId,
+            name: item.name,
+            variantName: item.variantName,
+            addons: item.addons ?? [],
+            foodType: item.foodType,
+            unitPrice: item.unitPrice,
+            gstRate: item.gstRate,
+            note: item.note,
+            status: item.status,
+          },
+        });
+      }
+    }
+    await bumpLive(tx, restaurantId);
+    return split;
   });
 }

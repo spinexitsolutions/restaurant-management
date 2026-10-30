@@ -4,6 +4,7 @@ import { useActionState, useMemo, useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { Badge, Button, Card, Field, FormMessage, Input, Select, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { ImageUpload } from "@/components/image-upload";
 import { calculateBill, formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
 import { removeRazorpay, saveGst, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay } from "./actions";
@@ -61,9 +62,11 @@ export function ProfileForm({ r }: { r: Record<string, string> }) {
           <Field label="FSSAI licence no.">
             <Input name="fssaiNumber" defaultValue={r.fssaiNumber} inputMode="numeric" maxLength={14} />
           </Field>
-          <Field label="Logo URL">
-            <Input name="logoUrl" type="url" defaultValue={r.logoUrl} placeholder="https://..." />
-          </Field>
+          <div className="sm:col-span-3">
+            <Field label="Logo">
+              <ImageUpload name="logoUrl" value={r.logoUrl} maxSize={400} label="Upload logo" />
+            </Field>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <SubmitButton>Save</SubmitButton>
@@ -106,7 +109,7 @@ export function MenuSettingsForm({ r }: { r: { qrOrderingEnabled: boolean; autoA
 export function GstForm({
   r,
 }: {
-  r: { gstEnabled: boolean; gstin: string; gstMode: "INCLUSIVE" | "EXCLUSIVE"; defaultGstRate: string; serviceChargeEnabled: boolean; serviceChargeRate: string; invoicePrefix: string };
+  r: { gstEnabled: boolean; gstin: string; gstMode: "INCLUSIVE" | "EXCLUSIVE"; defaultGstRate: string; serviceChargeEnabled: boolean; serviceChargeRate: string; invoicePrefix: string; requireManagerPin: boolean };
 }) {
   const [state, action] = useActionState(saveGst, null);
   const [preview, setPreview] = useState({
@@ -162,6 +165,11 @@ export function GstForm({
           </Field>
         </div>
 
+        <Toggle
+          name="requireManagerPin"
+          label="Cashiers and waiters need a manager PIN for discounts, reopening bills and cancelling started food"
+          defaultChecked={r.requireManagerPin}
+        />
         <div className="rounded-lg bg-stone-50 p-4 text-sm">
           <p className="mb-2 font-medium">Preview: a ₹500 menu item</p>
           <dl className="space-y-1">

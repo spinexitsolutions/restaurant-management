@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import QRCode from "qrcode";
-import { ArrowLeft, Check, ChefHat, MessageCircle, Minus, Plus, Printer, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Check, ChefHat, Combine, MessageCircle, Minus, Plus, Printer, Split, X } from "lucide-react";
 import { Badge, Button, FoodTypeIcon, Input, Select } from "@/components/ui";
 import { MenuPicker, type PickerCategory } from "@/components/menu-picker";
+import { PinDialog } from "@/components/pin-dialog";
+import { enqueue, newRequestId } from "@/lib/outbox";
 import { addToCart, lineLabel, setQuantity, type CartLine } from "@/lib/cart";
 import { formatINR } from "@/lib/gst";
 import { buildUpiLink } from "@/lib/payments";
@@ -20,10 +22,13 @@ import {
   cancelOrderItem,
   cancelWholeOrder,
   markServed,
+  mergeInto,
   rejectKot,
   reopenOrder,
   sendKot,
+  splitBill,
   takePayment,
+  transferTable,
   type ActionResult,
 } from "../actions";
 
@@ -44,14 +49,27 @@ const ITEM_STATUS: Record<OrderItemView["status"], { label: string; tone: "stone
   CANCELLED: { label: "Cancelled", tone: "red" },
 };
 
+export interface FloorTableOption {
+  id: string;
+  name: string;
+  orderId: string | null;
+  orderNumber: number | null;
+  orderStatus: string | null;
+}
+
+type Act = <T>(fn: (pin?: string) => Promise<ActionResult<T>>, after?: (data: T | undefined) => void) => void;
+
 export function OrderWorkspace(props: {
+  floorTables: FloorTableOption[];
   order: OrderView | null;
   context: { tableId: string | null; tableName: string | null; type: "DINE_IN" | "TAKEAWAY" | "DELIVERY" };
   menu: PickerCategory[];
   restaurant: WorkspaceRestaurant;
   canBill: boolean;
 }) {
-  const { order, context, menu, restaurant, canBill } = props;
+  const { order, context, menu, restaurant, canBill, floorTables } = props;
+  const [pinRequest, setPinRequest] = useState<{ retry: (pin: string) => void; error: string | null } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [kotNote, setKotNote] = useState("");
@@ -65,33 +83,54 @@ export function OrderWorkspace(props: {
   const editable = status === "OPEN";
   const title = context.tableName ? `Table ${context.tableName}` : order ? `${order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${order.orderNumber}` : "New takeaway";
 
-  function act<T>(fn: () => Promise<ActionResult<T>>, after?: (data: T | undefined) => void) {
+  // Runs an action; if the server asks for a manager PIN, shows the PIN dialog and retries with it.
+  const act: Act = (fn, after) => {
     setError(null);
-    start(async () => {
-      const res = await fn();
-      if (!res.ok) setError(res.error);
-      else after?.(res.data);
-    });
-  }
+    const attempt = (pin?: string) =>
+      start(async () => {
+        const res = await fn(pin);
+        if (!res.ok && res.error === "PIN_REQUIRED") return setPinRequest({ retry: attempt, error: null });
+        if (!res.ok && pin) return setPinRequest({ retry: attempt, error: res.error });
+        setPinRequest(null);
+        if (!res.ok) setError(res.error);
+        else after?.(res.data);
+      });
+    attempt();
+  };
 
   function send() {
-    act(
-      () =>
-        sendKot({
-          orderId: order?.id,
-          tableId: context.tableId,
-          type: context.type,
-          customerName: customer.name || undefined,
-          customerPhone: customer.phone || undefined,
-          note: kotNote || undefined,
-          lines: cart.map((l) => ({ itemId: l.itemId, variantId: l.variantId, addonIds: l.addonIds, quantity: l.quantity })),
-        }),
-      (data) => {
-        setCart([]);
-        setKotNote("");
-        if (!order && data) router.replace(`/dashboard/orders/${data.orderId}`);
-      },
-    );
+    const payload = {
+      orderId: order?.id,
+      tableId: context.tableId,
+      type: context.type,
+      customerName: customer.name || undefined,
+      customerPhone: customer.phone || undefined,
+      note: kotNote || undefined,
+      lines: cart.map((l) => ({ itemId: l.itemId, variantId: l.variantId, addonIds: l.addonIds, quantity: l.quantity })),
+      clientRequestId: newRequestId(),
+    };
+    const clear = () => {
+      setCart([]);
+      setKotNote("");
+    };
+    const queue = () => {
+      enqueue({ id: payload.clientRequestId, kind: "sendKot", label: `KOT for ${title}`, createdAt: Date.now(), payload });
+      clear();
+      setNotice("You're offline. This KOT is saved on this device and will reach the kitchen as soon as the internet is back.");
+    };
+    setError(null);
+    setNotice(null);
+    if (!navigator.onLine) return queue();
+    start(async () => {
+      try {
+        const res = await sendKot(payload);
+        if (!res.ok) return setError(res.error);
+        clear();
+        if (!order && res.data) router.replace(`/dashboard/orders/${res.data.orderId}`);
+      } catch {
+        queue();
+      }
+    });
   }
 
   const cartTotal = cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
@@ -111,8 +150,13 @@ export function OrderWorkspace(props: {
             {order?.invoiceNumber && ` · ${order.invoiceNumber}`}
           </p>
         </div>
+        {order && (status === "OPEN" || status === "BILLED") && (
+          <TableActions order={order} floorTables={floorTables} canBill={canBill} onAct={act} />
+        )}
         <Badge tone={status === "PAID" ? "green" : status === "BILLED" ? "amber" : status === "CANCELLED" ? "red" : "stone"}>{status}</Badge>
       </header>
+      {pinRequest && <PinDialog error={pinRequest.error} onCancel={() => setPinRequest(null)} onSubmit={(pin) => pinRequest.retry(pin)} />}
+      {notice && <p className="bg-amber-100 px-4 py-2 text-sm text-amber-900">{notice}</p>}
 
       <div className="flex border-b border-stone-200 bg-white lg:hidden">
         {(["menu", "order"] as const).map((t) => (
@@ -200,7 +244,7 @@ function KotBlock({
 }: {
   kot: OrderView["kots"][number];
   editable: boolean;
-  onAct: <T>(fn: () => Promise<ActionResult<T>>, after?: (d: T | undefined) => void) => void;
+  onAct: Act;
 }) {
   const ready = kot.items.filter((i) => i.status === "READY");
   const pendingApproval = kot.status === "PENDING_APPROVAL";
@@ -234,7 +278,7 @@ function KotBlock({
                 title="Cancel item"
                 onClick={() => {
                   const reason = item.status === "NEW" ? prompt("Reason (optional)") ?? null : prompt("Reason for cancelling (required)");
-                  if (reason !== null) onAct(() => cancelOrderItem(item.id, reason));
+                  if (reason !== null) onAct((pin) => cancelOrderItem(item.id, reason, pin));
                 }}
               >
                 <X size={14} />
@@ -307,7 +351,7 @@ function BillingPanel({
   order: OrderView;
   restaurant: WorkspaceRestaurant;
   pending: boolean;
-  onAct: <T>(fn: () => Promise<ActionResult<T>>, after?: (d: T | undefined) => void) => void;
+  onAct: Act;
 }) {
   const due = order.bill.grandTotal - order.paid;
   const [discountType, setDiscountType] = useState<"PERCENT" | "FLAT">(order.discount?.type ?? "PERCENT");
@@ -346,7 +390,7 @@ function BillingPanel({
           <Button
             variant="secondary"
             disabled={pending}
-            onClick={() => onAct(() => applyDiscount(order.id, discountType, Number(discountValue) || 0, ""))}
+            onClick={() => onAct((pin) => applyDiscount(order.id, discountType, Number(discountValue) || 0, "", pin))}
           >
             Apply
           </Button>
@@ -358,7 +402,7 @@ function BillingPanel({
           className="w-full text-center text-xs text-red-600 hover:underline"
           onClick={() => {
             const reason = prompt("Reason for cancelling the whole order");
-            if (reason) onAct(() => cancelWholeOrder(order.id, reason));
+            if (reason) onAct((pin) => cancelWholeOrder(order.id, reason, pin));
           }}
         >
           Cancel order
@@ -393,7 +437,25 @@ function BillingPanel({
         </div>
       ) : (
         <>
-          <p className="text-sm font-semibold">Collect payment · {formatINR(due)} due</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Collect payment · {formatINR(due)} due</p>
+            <select
+              aria-label="Split equally"
+              className="rounded-md bg-stone-100 px-2 py-1 text-xs"
+              value=""
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (n > 1) setAmount((Math.ceil(due / n) / 100).toFixed(2));
+              }}
+            >
+              <option value="">Split equally</option>
+              {[2, 3, 4, 5, 6, 8, 10].map((n) => (
+                <option key={n} value={n}>
+                  {n} people · {formatINR(Math.ceil(due / n))} each
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="grid grid-cols-4 gap-1">
             {(["CASH", "UPI", "CARD", "OTHER"] as const)
               .filter((m) => (m === "CASH" ? restaurant.acceptCash : m === "CARD" ? restaurant.acceptCard : true))
@@ -435,17 +497,138 @@ function BillingPanel({
           <Button
             className="h-11 w-full"
             disabled={pending || !(Number(amount) > 0)}
-            onClick={() => onAct(() => takePayment(order.id, { method, amount: Number(amount), reference: reference || undefined }), () => setTendered(""))}
+            onClick={() => {
+              const payload = { method, amount: Number(amount), reference: reference || undefined, clientRequestId: newRequestId() };
+              const label = `${method} ${formatINR(Math.round(payload.amount * 100))} for order #${order.orderNumber}`;
+              if (!navigator.onLine) {
+                enqueue({ id: payload.clientRequestId, kind: "payment", label, createdAt: Date.now(), orderId: order.id, payload });
+                setTendered("");
+                return alert("You're offline. The payment is saved on this device and will sync when the internet is back.");
+              }
+              onAct(() => takePayment(order.id, payload), () => setTendered(""));
+            }}
           >
             {method === "UPI" ? "Payment received" : "Record payment"} · {formatINR(Math.round(Number(amount) * 100) || 0)}
           </Button>
           {order.paid === 0 && (
-            <button className="w-full text-center text-xs text-stone-500 hover:underline" onClick={() => onAct(() => reopenOrder(order.id))}>
+            <button className="w-full text-center text-xs text-stone-500 hover:underline" onClick={() => onAct((pin) => reopenOrder(order.id, pin))}>
               Reopen bill to add or change items
             </button>
           )}
         </>
       )}
     </div>
+  );
+}
+
+function TableActions({ order, floorTables, canBill, onAct }: { order: OrderView; floorTables: FloorTableOption[]; canBill: boolean; onAct: Act }) {
+  const router = useRouter();
+  const [mode, setMode] = useState<"move" | "merge" | "split" | null>(null);
+  const [split, setSplit] = useState<Record<string, number>>({});
+  const free = floorTables.filter((t) => !t.orderId);
+  const running = floorTables.filter((t) => t.orderId && t.orderId !== order.id && t.orderStatus === "OPEN");
+  const items = order.kots.filter((k) => k.status === "ACCEPTED").flatMap((k) => k.items).filter((i) => i.status !== "CANCELLED");
+
+  return (
+    <>
+      <div className="flex gap-1">
+        <button onClick={() => setMode("move")} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ring-stone-300 hover:bg-stone-50" title="Move to another table">
+          <ArrowRightLeft size={14} /> <span className="hidden sm:inline">Move</span>
+        </button>
+        {order.status === "OPEN" && (
+          <button onClick={() => setMode("merge")} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ring-stone-300 hover:bg-stone-50" title="Merge another table into this bill">
+            <Combine size={14} /> <span className="hidden sm:inline">Merge</span>
+          </button>
+        )}
+        {canBill && order.status === "OPEN" && items.length > 0 && (
+          <button onClick={() => setMode("split")} className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ring-stone-300 hover:bg-stone-50" title="Split bill">
+            <Split size={14} /> <span className="hidden sm:inline">Split</span>
+          </button>
+        )}
+      </div>
+      {mode && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 sm:items-center" onClick={() => setMode(null)}>
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+            {mode === "move" && (
+              <>
+                <h2 className="mb-1 font-semibold">Move to table</h2>
+                <p className="mb-4 text-sm text-stone-500">The whole order, including the bill, moves to the new table.</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {free.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => onAct(() => transferTable(order.id, t.id), () => setMode(null))}
+                      className="rounded-lg py-3 font-semibold ring-1 ring-stone-200 hover:bg-brand-50 hover:ring-brand-500"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                  {free.length === 0 && <p className="col-span-4 text-sm text-stone-500">No free tables.</p>}
+                </div>
+              </>
+            )}
+            {mode === "merge" && (
+              <>
+                <h2 className="mb-1 font-semibold">Merge into this bill</h2>
+                <p className="mb-4 text-sm text-stone-500">Pick a table. Its items move here and that table becomes free.</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {running.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => confirm(`Move all items from table ${t.name} into this bill?`) && onAct(() => mergeInto(order.id, t.orderId!), () => setMode(null))}
+                      className="rounded-lg py-3 font-semibold ring-1 ring-stone-200 hover:bg-brand-50 hover:ring-brand-500"
+                    >
+                      {t.name}
+                    </button>
+                  ))}
+                  {running.length === 0 && <p className="col-span-4 text-sm text-stone-500">No other running tables to merge.</p>}
+                </div>
+              </>
+            )}
+            {mode === "split" && (
+              <>
+                <h2 className="mb-1 font-semibold">Split bill</h2>
+                <p className="mb-4 text-sm text-stone-500">Choose what goes on a separate bill. To split the amount equally instead, use “Split equally” when collecting payment.</p>
+                <ul className="divide-y divide-stone-100">
+                  {items.map((i) => (
+                    <li key={i.id} className="flex items-center gap-2 py-2 text-sm">
+                      <span className="min-w-0 flex-1">
+                        {i.name}
+                        {i.variantName && ` (${i.variantName})`} <span className="text-stone-400">× {i.quantity}</span>
+                      </span>
+                      <div className="flex items-center rounded-lg ring-1 ring-stone-200">
+                        <button className="p-1.5" onClick={() => setSplit((s) => ({ ...s, [i.id]: Math.max(0, (s[i.id] ?? 0) - 1) }))} aria-label="Less">
+                          <Minus size={14} />
+                        </button>
+                        <span className="w-6 text-center font-semibold">{split[i.id] ?? 0}</span>
+                        <button className="p-1.5" onClick={() => setSplit((s) => ({ ...s, [i.id]: Math.min(i.quantity, (s[i.id] ?? 0) + 1) }))} aria-label="More">
+                          <Plus size={14} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  className="mt-4 w-full"
+                  disabled={!Object.values(split).some((q) => q > 0)}
+                  onClick={() =>
+                    onAct(
+                      () => splitBill(order.id, Object.entries(split).map(([itemId, quantity]) => ({ itemId, quantity }))),
+                      (data) => {
+                        setMode(null);
+                        setSplit({});
+                        if (data) router.push(`/dashboard/orders/${data.orderId}`);
+                      },
+                    )
+                  }
+                >
+                  Move to new bill
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }

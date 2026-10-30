@@ -1,7 +1,7 @@
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { AddStaffForm, StaffRowControls } from "./staff-controls";
+import { AddStaffForm, PinForm, StaffRowControls } from "./staff-controls";
 
 export const metadata = { title: "Staff" };
 
@@ -20,9 +20,19 @@ export default async function StaffPage() {
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   });
 
+  const me = staff.find((u) => u.id === session.userId);
+
   return (
     <div className="max-w-5xl">
       <PageHeader title="Staff" description="Each person gets their own login. What they can see depends on their role." />
+      <Card className="mb-6">
+        <h2 className="font-semibold">Your approval PIN</h2>
+        <p className="mb-3 text-sm text-stone-500">
+          Cashiers and waiters need an owner or manager PIN to give discounts, reopen bills, or cancel food the kitchen has started.
+          {!me?.pinHash && " Set one now so your staff can get approvals."}
+        </p>
+        <PinForm hasPin={!!me?.pinHash} />
+      </Card>
       <Card className="mb-6">
         <h2 className="mb-3 font-semibold">Add staff member</h2>
         <AddStaffForm canAddManager={session.role === "OWNER"} />

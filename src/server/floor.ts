@@ -8,6 +8,7 @@ export interface FloorOrder {
   status: "OPEN" | "BILLED";
   type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
   customerName: string | null;
+  tableName: string | null;
   total: number;
   itemCount: number;
   readyCount: number;
@@ -45,6 +46,7 @@ export async function getFloor(restaurantId: string) {
       status: o.status as "OPEN" | "BILLED",
       type: o.type,
       customerName: o.customerName,
+      tableName: o.tableName,
       total: billFor({ ...o, kots: o.kots, payments: o.payments }, restaurant).grandTotal,
       itemCount: live.reduce((s, i) => s + i.quantity, 0),
       readyCount: live.filter((i) => i.status === "READY").length,

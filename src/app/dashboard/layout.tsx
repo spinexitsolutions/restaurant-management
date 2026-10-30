@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { APP_NAME } from "@/lib/utils";
 import { logout } from "../(auth)/actions";
 import { DashboardNav, type NavItem } from "./nav";
+import { OfflineBar } from "@/components/offline-bar";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await requireRestaurantSession();
@@ -19,6 +20,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ...(can(["OWNER", "MANAGER", "CASHIER", "WAITER"]) ? [{ href: "/dashboard/waiter", label: "Tables", icon: "UserRound" } as const] : []),
     ...(can(["OWNER", "MANAGER", "CHEF"]) ? [{ href: "/dashboard/kitchen", label: "Kitchen", icon: "ChefHat" } as const] : []),
     ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/orders", label: "Orders", icon: "ClipboardList" } as const] : []),
+    ...(can(["OWNER", "MANAGER", "CASHIER"]) ? [{ href: "/dashboard/day-close", label: "Day close", icon: "Wallet" } as const] : []),
+    ...(can(["OWNER", "MANAGER"]) ? [{ href: "/dashboard/reports", label: "Reports", icon: "BarChart3" } as const] : []),
     ...(can(["OWNER", "MANAGER"])
       ? ([
           { href: "/dashboard/menu", label: "Menu", icon: "UtensilsCrossed" },
@@ -62,7 +65,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </form>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+      <div className="min-w-0 flex-1">
+        <OfflineBar />
+        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }

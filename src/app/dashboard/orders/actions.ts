@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRestaurantSession } from "@/lib/auth";
 import { toPaise } from "@/lib/gst";
+import { approve, audit } from "@/server/approval";
+import { db } from "@/lib/db";
 import {
   advanceItems,
   BILLING_ROLES,
@@ -19,6 +21,9 @@ import {
   reopenBill,
   resolveServiceRequest,
   setDiscount,
+  splitOrder,
+  transferOrder,
+  mergeOrders,
 } from "@/server/orders";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -51,6 +56,7 @@ const sendKotSchema = z.object({
   customerPhone: z.union([z.literal(""), z.string().regex(/^[6-9]\d{9}$/, "Enter a 10-digit mobile number")]).optional(),
   note: z.string().max(200).optional(),
   lines: z.array(lineSchema).min(1, "Add at least one item").max(50),
+  clientRequestId: z.string().max(64).optional(),
 });
 
 /** Staff sends items to the kitchen; creates the order on the first KOT. */
@@ -73,6 +79,7 @@ export async function sendKot(input: z.input<typeof sendKotSchema>): Promise<Act
       kotStatus: "ACCEPTED",
       createdById: session.userId,
       note: d.note,
+      clientRequestId: d.clientRequestId,
     });
     return { orderId: order.id };
   });
@@ -85,7 +92,11 @@ export async function acceptKot(kotId: string) {
 
 export async function rejectKot(kotId: string) {
   const s = await requireRestaurantSession(ORDER_ROLES);
-  return run(() => decideKot(s.restaurantId, kotId, false));
+  return run(async () => {
+    const kot = await db.kot.findFirst({ where: { id: kotId, restaurantId: s.restaurantId }, select: { orderId: true, kotNumber: true } });
+    await decideKot(s.restaurantId, kotId, false);
+    await audit({ restaurantId: s.restaurantId, actor: s, action: "KOT_REJECTED", orderId: kot?.orderId, details: { kotNumber: kot?.kotNumber } });
+  });
 }
 
 /** Kitchen moves items NEW -> PREPARING -> READY. */
@@ -100,14 +111,33 @@ export async function markServed(itemIds: string[]) {
   return run(() => advanceItems(s.restaurantId, itemIds, "SERVED"));
 }
 
-export async function cancelOrderItem(itemId: string, reason: string) {
+export async function cancelOrderItem(itemId: string, reason: string, pin?: string) {
   const s = await requireRestaurantSession(ORDER_ROLES);
-  return run(() => cancelItem(s.restaurantId, itemId, reason, s.role));
+  return run(async () => {
+    const item = await db.orderItem.findFirst({ where: { id: itemId, order: { restaurantId: s.restaurantId } } });
+    if (!item) throw new OrderError("Item not found");
+    // Removing something the kitchen already started costs money, so it needs approval.
+    const approvedBy = item.status === "NEW" ? null : await approve(s, pin);
+    // A manager-approved cancellation is allowed even for a waiter.
+    await cancelItem(s.restaurantId, itemId, reason, approvedBy ? "MANAGER" : s.role);
+    await audit({
+      restaurantId: s.restaurantId,
+      actor: s,
+      approvedBy,
+      action: "ITEM_CANCELLED",
+      orderId: item.orderId,
+      details: { item: item.name, quantity: item.quantity, amount: Number(item.unitPrice) * item.quantity, status: item.status, reason },
+    });
+  });
 }
 
-export async function applyDiscount(orderId: string, type: "PERCENT" | "FLAT", value: number, note: string) {
+export async function applyDiscount(orderId: string, type: "PERCENT" | "FLAT", value: number, note: string, pin?: string) {
   const s = await requireRestaurantSession(BILLING_ROLES);
-  return run(() => setDiscount(s.restaurantId, orderId, value > 0 ? { type, value, note } : null));
+  return run(async () => {
+    const approvedBy = value > 0 ? await approve(s, pin) : null;
+    await setDiscount(s.restaurantId, orderId, value > 0 ? { type, value, note } : null);
+    await audit({ restaurantId: s.restaurantId, actor: s, approvedBy, action: value > 0 ? "DISCOUNT_APPLIED" : "DISCOUNT_REMOVED", orderId, details: { type, value, note } });
+  });
 }
 
 export async function billOrder(orderId: string) {
@@ -117,15 +147,20 @@ export async function billOrder(orderId: string) {
   });
 }
 
-export async function reopenOrder(orderId: string) {
+export async function reopenOrder(orderId: string, pin?: string) {
   const s = await requireRestaurantSession(BILLING_ROLES);
-  return run(() => reopenBill(s.restaurantId, orderId));
+  return run(async () => {
+    const approvedBy = await approve(s, pin);
+    await reopenBill(s.restaurantId, orderId);
+    await audit({ restaurantId: s.restaurantId, actor: s, approvedBy, action: "BILL_REOPENED", orderId });
+  });
 }
 
 const paymentSchema = z.object({
   method: z.enum(["CASH", "UPI", "CARD", "OTHER"]),
   amount: z.number().positive("Enter an amount").max(10_000_000),
   reference: z.string().max(80).optional(),
+  clientRequestId: z.string().max(64).optional(),
 });
 
 export async function takePayment(orderId: string, input: z.input<typeof paymentSchema>) {
@@ -137,14 +172,44 @@ export async function takePayment(orderId: string, input: z.input<typeof payment
       amountPaise: toPaise(d.amount),
       reference: d.reference,
       receivedById: s.userId,
+      clientRequestId: d.clientRequestId,
     });
     return { status: order.status };
   });
 }
 
-export async function cancelWholeOrder(orderId: string, reason: string) {
+export async function cancelWholeOrder(orderId: string, reason: string, pin?: string) {
   const s = await requireRestaurantSession(BILLING_ROLES);
-  return run(() => cancelOrder(s.restaurantId, orderId, reason));
+  return run(async () => {
+    const approvedBy = await approve(s, pin);
+    await cancelOrder(s.restaurantId, orderId, reason);
+    await audit({ restaurantId: s.restaurantId, actor: s, approvedBy, action: "ORDER_CANCELLED", orderId, details: { reason } });
+  });
+}
+
+export async function transferTable(orderId: string, toTableId: string) {
+  const s = await requireRestaurantSession(ORDER_ROLES);
+  return run(async () => {
+    const moved = await transferOrder(s.restaurantId, orderId, toTableId);
+    await audit({ restaurantId: s.restaurantId, actor: s, action: "TABLE_TRANSFERRED", orderId, details: moved });
+  });
+}
+
+export async function mergeInto(targetOrderId: string, sourceOrderId: string) {
+  const s = await requireRestaurantSession(ORDER_ROLES);
+  return run(async () => {
+    const merged = await mergeOrders(s.restaurantId, targetOrderId, sourceOrderId);
+    await audit({ restaurantId: s.restaurantId, actor: s, action: "ORDERS_MERGED", orderId: targetOrderId, details: merged });
+  });
+}
+
+export async function splitBill(orderId: string, parts: { itemId: string; quantity: number }[]) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  return run(async () => {
+    const split = await splitOrder(s.restaurantId, orderId, parts, s.userId);
+    await audit({ restaurantId: s.restaurantId, actor: s, action: "BILL_SPLIT", orderId, details: { newOrder: split.orderNumber, parts } });
+    return { orderId: split.id };
+  });
 }
 
 export async function resolveRequest(id: string) {

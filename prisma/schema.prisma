@@ -131,6 +131,9 @@ model Restaurant {
   menuThemeColor          String  @default("#ea580c")
   autoAcceptQrOrders      Boolean @default(false)
 
+  // Cashiers/waiters need an owner or manager PIN for these when enabled
+  requireManagerPin Boolean @default(true)
+
   // Daily counters (reset each day, IST) and financial-year invoice series
   orderSeqDate    String?
   nextOrderNumber Int     @default(1)
@@ -155,6 +158,9 @@ model Restaurant {
   orders     Order[]
   kots       Kot[]
   requests   ServiceRequest[]
+  auditLogs  AuditLog[]
+  dayCloses  DayClose[]
+  images     Image[]
 }
 
 model User {
@@ -165,6 +171,7 @@ model User {
   email        String      @unique
   phone        String?
   passwordHash String
+  pinHash      String? // 4-6 digit approval PIN for owners and managers
   role         Role
   isActive     Boolean     @default(true)
   lastLoginAt  DateTime?
@@ -330,6 +337,7 @@ model Kot {
   orderId      String
   order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
   kotNumber    Int
+  clientRequestId String? @unique // lets offline devices retry without creating duplicates
   status       KotStatus  @default(ACCEPTED)
   note         String?
   createdById  String? // null when placed by the customer
@@ -373,6 +381,7 @@ model Payment {
   reference         String?
   razorpayOrderId   String?
   razorpayPaymentId String?       @unique
+  clientRequestId   String?       @unique
   receivedById      String?
   createdAt         DateTime      @default(now())
 
@@ -390,4 +399,59 @@ model ServiceRequest {
   createdAt    DateTime           @default(now())
 
   @@index([restaurantId, resolvedAt])
+}
+
+// Who did what to money: discounts, cancellations, reopened bills, table moves, day close.
+model AuditLog {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  userId       String?
+  userName     String?
+  approvedBy   String? // name of the manager whose PIN approved it
+  action       String
+  orderId      String?
+  orderNumber  Int?
+  details      Json       @default("{}")
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId, createdAt])
+}
+
+model DayClose {
+  id            String     @id @default(cuid())
+  restaurantId  String
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  businessDate  String // IST yyyy-mm-dd
+  openingCash   Decimal    @db.Decimal(10, 2)
+  cashSales     Decimal    @db.Decimal(10, 2)
+  upiSales      Decimal    @db.Decimal(10, 2)
+  cardSales     Decimal    @db.Decimal(10, 2)
+  onlineSales   Decimal    @db.Decimal(10, 2)
+  otherSales    Decimal    @db.Decimal(10, 2)
+  totalSales    Decimal    @db.Decimal(10, 2)
+  cashWithdrawn Decimal    @default(0) @db.Decimal(10, 2)
+  expectedCash  Decimal    @db.Decimal(10, 2)
+  countedCash   Decimal    @db.Decimal(10, 2)
+  difference    Decimal    @db.Decimal(10, 2)
+  ordersCount   Int
+  note          String?
+  closedById    String?
+  closedByName  String?
+  createdAt     DateTime   @default(now())
+
+  @@unique([restaurantId, businessDate])
+}
+
+// Menu photos and logos, stored in the database so uploads work on any host with no extra setup.
+model Image {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  mime         String
+  data         Bytes
+  size         Int
+  createdAt    DateTime   @default(now())
+
+  @@index([restaurantId])
 }
