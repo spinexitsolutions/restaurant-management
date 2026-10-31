@@ -108,13 +108,26 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Soundbox | POS and order screens announce online payments out loud ("540 रुपये प्राप्त हुए", or English if the device has no Hindi voice), including customers paying from their phones |
 | "We miss you" | Customers away for N days (default 30) get one WhatsApp offer per absence at 9 AM (up to 200 per outlet per day), never if they opted out. The Customers page lists who is due, lets you send by hand without the WhatsApp API, and shows how many came back |
 
+## Coupons, languages, alerts, import & your data
+
+| Feature | How it works |
+|---|---|
+| Coupon codes | Owners create codes like `FIRST50` or `WEEKEND20` (% with a cap, or flat ₹; minimum bill, dates, total uses, uses per customer, first order only). Staff type them on the bill, guests type them on the order page after scanning the QR. Rules are checked again when the bill is generated, so a code can't be over-used; reopening or cancelling a bill frees the use. GST is charged on the discounted amount, and the invoice shows "Coupon CODE". "Use in win-back" puts a real code into the automatic "we miss you" WhatsApp message |
+| Hindi / Marathi staff app | Each staff member picks English, हिन्दी or मराठी at the bottom of the sidebar. The menu, tables, order screen, kitchen board and their phone alerts follow it. Bills and the guest menu stay in English. Adding a language = copying `src/lib/i18n/en.ts` (the compiler and a test catch missing keys) |
+| Phone alerts | "Turn on phone alerts" on any staff device (Android Chrome, desktop; iPhone after adding the app to the home screen). The order's waiter (or every waiter if none) gets: food ready, guest calling / wants the bill / water, and new QR orders waiting for approval. Needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (`npx web-push generate-vapid-keys`) |
+| Menu import | Menu → Import: upload Excel (.xlsx) or CSV in the template format (or almost any sheet with Item / Price columns), or photograph the printed menu and let AI read it (needs `ANTHROPIC_API_KEY`). Everything is shown for review, with a reason for every skipped line, before saving. "Only add new" or "add + update existing by name" |
+| Data export | Data & privacy: CSV downloads (Excel-ready) of orders, items sold, payments, customers (owner only), menu (in the import format), stock movements and attendance for any dates |
+| Delete customer data | On a guest's request: removes their name, mobile, birthday and points everywhere; bills keep the amounts (and B2B buyer GSTIN) for GST records |
+| Delete account | The owner confirms with the restaurant name and password. Everything (all outlets) is deleted after 30 days by the daily job; a red banner shows the date and the owner can cancel until then |
+
 ## Going live (Vercel + Supabase)
 
 1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.
 2. Import the repository in Vercel and set every variable from `.env.example` (generate `AUTH_SECRET`, `ENCRYPTION_KEY` and `CRON_SECRET` with `openssl rand -base64 32`; set `NEXT_PUBLIC_APP_URL` to your domain).
 3. Apply migrations once: `npm run db:deploy`, then `npm run db:seed` for the super admin.
 4. Vercel picks up the daily cron from `vercel.json`.
-5. To accept subscription payments, add your own Razorpay keys as `PLATFORM_RAZORPAY_KEY_ID` / `PLATFORM_RAZORPAY_KEY_SECRET` and your GST details as `PLATFORM_*`.
+5. For staff phone alerts, generate VAPID keys with `npx web-push generate-vapid-keys` and set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT`.
+6. To accept subscription payments, add your own Razorpay keys as `PLATFORM_RAZORPAY_KEY_ID` / `PLATFORM_RAZORPAY_KEY_SECRET` and your GST details as `PLATFORM_*`.
 
 Run the test suite against a separate database: the integration tests create and delete their own data, but they do advance the shared subscription invoice counter.
 

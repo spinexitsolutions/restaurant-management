@@ -7,6 +7,8 @@ import { isValidMonthDay } from "@/lib/crm";
 import { db } from "@/lib/db";
 import { audit } from "@/server/approval";
 import { BILLING_ROLES } from "@/server/orders";
+import { eraseCustomer } from "@/server/privacy";
+import { redirect } from "next/navigation";
 
 export type FormState = { error?: string; ok?: string } | null;
 
@@ -98,4 +100,13 @@ export async function setMarketingOptOut(customerId: string, optOut: boolean) {
   const s = await requireRestaurantSession(BILLING_ROLES);
   await db.customer.updateMany({ where: { id: customerId, restaurantId: s.restaurantId }, data: { marketingOptOut: optOut } });
   revalidatePath(`/dashboard/customers/${customerId}`);
+}
+
+/** Guest asked for their data to be deleted: scrub them from bills and bookings, then remove them. */
+export async function deleteCustomerData(id: string) {
+  const s = await requireRestaurantSession(MANAGE_ROLES);
+  const res = await eraseCustomer(s.restaurantId, id);
+  if (res) await audit({ restaurantId: s.restaurantId, actor: s, action: "CUSTOMER_DATA_DELETED", details: { phoneEnd: res.phoneEnd, orders: res.orders } });
+  revalidatePath("/dashboard/customers");
+  redirect("/dashboard/customers");
 }

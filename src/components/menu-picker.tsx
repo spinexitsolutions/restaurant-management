@@ -6,6 +6,7 @@ import { buildCartLine, type CartLine, type MenuItemData } from "@/lib/cart";
 import { cn } from "@/lib/utils";
 import { Customizer } from "./item-customizer";
 import { FoodTypeIcon } from "./ui";
+import { useT } from "./i18n";
 
 export interface PickerCategory {
   id: string;
@@ -17,6 +18,7 @@ const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { 
 
 /** Fast item grid for staff: tap to add, items with options open the customiser. */
 export function MenuPicker({ categories, onAdd }: { categories: PickerCategory[]; onAdd: (line: CartLine) => void }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string | "all">("all");
   const [customizing, setCustomizing] = useState<MenuItemData | null>(null);
@@ -40,13 +42,13 @@ export function MenuPicker({ categories, onAdd }: { categories: PickerCategory[]
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search items"
+          placeholder={t("menu.search")}
           className="h-10 w-full rounded-lg border border-stone-300 bg-white pr-3 pl-9 text-sm outline-none focus:border-brand-500"
           autoComplete="off"
         />
       </div>
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
-        {[{ id: "all", name: "All" }, ...categories].map((c) => (
+        {[{ id: "all", name: t("menu.all") }, ...categories].map((c) => (
           <button
             key={c.id}
             onClick={() => setCat(c.id)}
@@ -71,12 +73,12 @@ export function MenuPicker({ categories, onAdd }: { categories: PickerCategory[]
               {item.name}
             </span>
             <span className="mt-1 text-xs text-stone-500">
-              {item.isAvailable ? rupees(item.variants[0]?.price ?? item.price) : "Sold out"}
+              {item.isAvailable ? rupees(item.variants[0]?.price ?? item.price) : t("menu.soldOut")}
               {item.isAvailable && (item.variants.length > 1 || item.addonGroups.length > 0) && " +"}
             </span>
           </button>
         ))}
-        {items.length === 0 && <p className="col-span-full py-10 text-center text-sm text-stone-500">No items</p>}
+        {items.length === 0 && <p className="col-span-full py-10 text-center text-sm text-stone-500">{t("menu.noItems")}</p>}
       </div>
       {customizing && (
         <div style={{ "--theme": "#ea580c" } as React.CSSProperties}>

@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { formatINR, toPaise } from "@/lib/gst";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { BILLING_ROLES } from "@/server/orders";
-import { AdjustPointsForm, CustomerForm, OptOutToggle } from "../forms";
+import { AdjustPointsForm, CustomerForm, DeleteCustomerButton, OptOutToggle } from "../forms";
 
 export const metadata = { title: "Customer" };
 
@@ -60,6 +60,11 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
           <OptOutToggle id={c.id} optOut={c.marketingOptOut} />
         </div>
         {top.length > 0 && <p className="mt-4 text-sm text-stone-600">Usually orders: {top.map(([n, q]) => `${n} (${q})`).join(", ")}</p>}
+        {(session.role === "OWNER" || session.role === "MANAGER") && (
+          <div className="mt-4 border-t border-stone-100 pt-3">
+            <DeleteCustomerButton id={c.id} />
+          </div>
+        )}
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">

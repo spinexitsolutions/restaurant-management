@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { Field, FormMessage, Input, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { useTransition } from "react";
-import { adjustPoints, createCustomer, markWinbackSent, setMarketingOptOut, updateCustomer } from "./actions";
+import { adjustPoints, createCustomer, deleteCustomerData, markWinbackSent, setMarketingOptOut, updateCustomer } from "./actions";
 
 // Month-day values are shown in a date picker using a fixed leap year (so 29 Feb works).
 const asDate = (mmdd: string | null) => (mmdd ? `2024-${mmdd}` : "");
@@ -90,5 +90,20 @@ export function OptOutToggle({ id, optOut }: { id: string; optOut: boolean }) {
       <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={optOut} disabled={pending} onChange={(e) => start(() => setMarketingOptOut(id, e.target.checked))} />
       Don&apos;t send offers or birthday messages to this customer
     </label>
+  );
+}
+
+export function DeleteCustomerButton({ id }: { id: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <button
+      disabled={pending}
+      className="text-sm text-red-600 hover:underline"
+      onClick={() => {
+        if (confirm("Delete this customer's name, mobile, birthday and points? Bills stay but without their details. This can't be undone.")) start(() => deleteCustomerData(id));
+      }}
+    >
+      Delete this customer&apos;s data
+    </button>
   );
 }

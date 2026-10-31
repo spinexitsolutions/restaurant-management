@@ -3,7 +3,7 @@
 //  - Pages: network-first, falling back to the last copy seen on this device, then /offline.
 //  - API calls, server actions and React Server Component fetches always go to the network;
 //    writes made while offline are queued by the app itself (see src/lib/outbox.ts).
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC = `static-${VERSION}`;
 const PAGES = `pages-${VERSION}`;
 
@@ -49,4 +49,37 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => (await caches.match(req)) || (await caches.match("/offline")) || Response.error()),
     );
   }
+});
+
+// Staff phone alerts (food ready, guest calling, new QR order).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { title: event.data ? event.data.text() : "New alert" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "New alert", {
+      body: data.body || "",
+      tag: data.tag,
+      renotify: Boolean(data.tag),
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      vibrate: [200, 100, 200],
+      data: { url: data.url || "/dashboard" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/dashboard", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      const same = wins.find((w) => w.url === url) || wins.find((w) => new URL(w.url).origin === self.location.origin);
+      if (same) return same.navigate(url).then((w) => (w || same).focus());
+      return self.clients.openWindow(url);
+    }),
+  );
 });

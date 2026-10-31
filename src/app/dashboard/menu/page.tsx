@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, FoodTypeIcon, PageHeader } from "@/components/ui";
@@ -37,14 +37,19 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         title="Menu"
         description="Categories, items, variants and add-ons. Changes show on the QR menu instantly."
         actions={
-          selected && (
+          <>
+            <Link href="/dashboard/menu/import" className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium ring-1 ring-stone-300 hover:bg-stone-50">
+              <Upload size={16} /> Import (Excel / photo)
+            </Link>
+            {selected && (
             <Link
               href={`/dashboard/menu/items/new?category=${selected.id}`}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
             >
               <Plus size={16} /> Add item
             </Link>
-          )
+            )}
+          </>
         }
       />
 

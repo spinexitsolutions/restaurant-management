@@ -7,6 +7,7 @@ import { FoodTypeIcon } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { beep, useLiveRefresh } from "@/hooks/use-live";
 import { kitchenAdvance } from "../orders/actions";
+import { useT } from "@/components/i18n";
 
 export interface KitchenKot {
   id: string;
@@ -31,6 +32,7 @@ const WARN_AFTER = 10;
 const LATE_AFTER = 20;
 
 export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; stations: { id: string; name: string }[]; active: string }) {
+  const t = useT();
   const [sound, setSound] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
@@ -50,10 +52,10 @@ export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; s
       <div className="mb-4 flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="mr-2 text-xl font-bold">
-            {active === "all" ? "Kitchen" : active === "main" ? "Main kitchen" : stations.find((s) => s.id === active)?.name} · {cooking.length} active
+            {active === "all" ? t("kitchen.title") : active === "main" ? t("kitchen.main") : stations.find((s) => s.id === active)?.name} · {t("kitchen.active", { count: cooking.length })}
           </h1>
           {stations.length > 0 &&
-            [{ id: "all", name: "All" }, ...stations, { id: "main", name: "Main" }].map((s) => (
+            [{ id: "all", name: t("kitchen.all") }, ...stations, { id: "main", name: t("kitchen.mainShort") }].map((s) => (
               <Link
                 key={s.id}
                 href={s.id === "all" ? "/dashboard/kitchen" : `/dashboard/kitchen?station=${s.id}`}
@@ -70,13 +72,13 @@ export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; s
           }}
           className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium", sound ? "bg-green-600" : "bg-stone-700")}
         >
-          {sound ? <Volume2 size={16} /> : <VolumeX size={16} />} {sound ? "Sound on" : "Turn sound on"}
+          {sound ? <Volume2 size={16} /> : <VolumeX size={16} />} {sound ? t("kitchen.soundOn") : t("kitchen.turnSoundOn")}
         </button>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_280px]">
         <div className="grid auto-rows-min gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-          {cooking.length === 0 && <p className="col-span-full py-20 text-center text-stone-400">No pending orders. 👨‍🍳</p>}
+          {cooking.length === 0 && <p className="col-span-full py-20 text-center text-stone-400">{t("kitchen.empty")}</p>}
           {cooking.map((k) => {
             const mins = Math.floor((now - new Date(k.createdAt).getTime()) / 60000);
             const open = k.items.filter((i) => i.status !== "READY");
@@ -108,21 +110,21 @@ export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; s
                           {i.note && <span className="block text-sm text-amber-300">⚠ {i.note}</span>}
                         </span>
                         <span className={cn("rounded px-2 py-0.5 text-xs font-semibold", i.status === "NEW" ? "bg-stone-600" : i.status === "PREPARING" ? "bg-amber-500 text-stone-900" : "bg-green-600")}>
-                          {i.status === "NEW" ? "NEW" : i.status === "PREPARING" ? "COOKING" : "READY"}
+                          {t(`kitchen.badge.${i.status}`)}
                         </span>
                       </button>
                     </li>
                   ))}
                 </ul>
-                {k.note && <p className="border-t border-stone-700 px-4 py-2 text-sm text-amber-300">Note: {k.note}</p>}
+                {k.note && <p className="border-t border-stone-700 px-4 py-2 text-sm text-amber-300">{t("kitchen.note", { note: k.note })}</p>}
                 <div className="flex gap-2 p-3">
                   {allNew && (
                     <button disabled={pending} onClick={() => advance(open.map((i) => i.id), "PREPARING")} className="flex-1 rounded-lg bg-amber-500 py-2 font-semibold text-stone-900">
-                      Start cooking
+                      {t("kitchen.start")}
                     </button>
                   )}
                   <button disabled={pending} onClick={() => advance(open.map((i) => i.id), "READY")} className="flex-1 rounded-lg bg-green-600 py-2 font-semibold">
-                    All ready
+                    {t("kitchen.allReady")}
                   </button>
                 </div>
               </div>
@@ -131,16 +133,16 @@ export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; s
         </div>
 
         <aside>
-          <h2 className="mb-2 text-sm font-semibold tracking-wide text-stone-400 uppercase">Ready · waiting for pickup</h2>
+          <h2 className="mb-2 text-sm font-semibold tracking-wide text-stone-400 uppercase">{t("kitchen.waiting")}</h2>
           <ul className="space-y-2">
-            {ready.length === 0 && <li className="text-sm text-stone-500">Nothing waiting.</li>}
+            {ready.length === 0 && <li className="text-sm text-stone-500">{t("kitchen.nothingWaiting")}</li>}
             {ready.map((i) => (
               <li key={i.id} className="rounded-lg bg-green-900/40 px-3 py-2 text-sm">
                 <span className="font-semibold">{i.label}</span> · {i.quantity}× {i.name}
               </li>
             ))}
           </ul>
-          <p className="mt-6 text-xs text-stone-500">Tap an item: New → Cooking → Ready. Waiters see ready items instantly.</p>
+          <p className="mt-6 text-xs text-stone-500">{t("kitchen.help")}</p>
         </aside>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import "server-only";
+import { purgeDeletedAccounts } from "./privacy";
 import type { Restaurant } from "@prisma/client";
 import { decrypt } from "@/lib/crypto";
 import { daysUntil } from "@/lib/crm";
@@ -88,7 +89,8 @@ export async function notifyBooking(reservationId: string) {
 export async function runDailyJobs(now: Date = new Date()) {
   const today = istDate(now);
   const year = Number(today.slice(0, 4));
-  const stats = { wishes: 0, summaries: 0, shiftsClosed: 0, winbacks: 0 };
+  const stats = { wishes: 0, summaries: 0, shiftsClosed: 0, winbacks: 0, accountsPurged: 0 };
+  stats.accountsPurged = await purgeDeletedAccounts(now);
 
   const stale = await db.attendance.updateMany({
     where: { clockOut: null, clockIn: { lt: new Date(now.getTime() - 16 * 3_600_000) } },

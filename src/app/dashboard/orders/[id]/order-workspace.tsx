@@ -16,9 +16,11 @@ import { formatINR } from "@/lib/gst";
 import { buildUpiLink } from "@/lib/payments";
 import { cn } from "@/lib/utils";
 import { useLiveRefresh } from "@/hooks/use-live";
+import { useT } from "@/components/i18n";
 import type { OrderItemView, OrderView } from "@/server/order-view";
 import {
   acceptKot,
+  applyCoupon,
   applyDiscount,
   applyPoints,
   fireCourse,
@@ -52,12 +54,12 @@ export interface WorkspaceRestaurant {
   gstMode: "INCLUSIVE" | "EXCLUSIVE";
 }
 
-const ITEM_STATUS: Record<OrderItemView["status"], { label: string; tone: "stone" | "amber" | "green" | "brand" | "red" }> = {
-  NEW: { label: "New", tone: "stone" },
-  PREPARING: { label: "Preparing", tone: "amber" },
-  READY: { label: "Ready", tone: "green" },
-  SERVED: { label: "Served", tone: "brand" },
-  CANCELLED: { label: "Cancelled", tone: "red" },
+const ITEM_TONE: Record<OrderItemView["status"], "stone" | "amber" | "green" | "brand" | "red"> = {
+  NEW: "stone",
+  PREPARING: "amber",
+  READY: "green",
+  SERVED: "brand",
+  CANCELLED: "red",
 };
 
 export interface FloorTableOption {
@@ -79,6 +81,7 @@ export function OrderWorkspace(props: {
   canBill: boolean;
 }) {
   const { order, context, menu, restaurant, canBill, floorTables } = props;
+  const t = useT();
   const [pinRequest, setPinRequest] = useState<{ retry: (pin: string) => void; error: string | null } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
@@ -95,11 +98,11 @@ export function OrderWorkspace(props: {
   const status = order?.status ?? "OPEN";
   const editable = status === "OPEN";
   const title = context.tableName
-    ? `Table ${context.tableName}`
+    ? t("floor.table", { name: context.tableName })
     : channelName
       ? `${channelName} ${order?.channelRef ? `#${order.channelRef}` : order ? `· order ${order.orderNumber}` : "order"}`
       : order
-        ? `${order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${order.orderNumber}`
+        ? `${order.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")} #${order.orderNumber}`
         : context.type === "DELIVERY"
           ? "New delivery"
           : "New takeaway";
@@ -168,7 +171,7 @@ export function OrderWorkspace(props: {
         <div className="min-w-0 flex-1">
           <h1 className="truncate font-semibold">{title}</h1>
           <p className="text-xs text-stone-500">
-            {order ? `Order #${order.orderNumber}` : "New order"}
+            {order ? t("order.number", { number: order.orderNumber }) : t("order.new")}
             {order?.customerName && ` · ${order.customerName}`}
             {order?.invoiceNumber && ` · ${order.invoiceNumber}`}
           </p>
@@ -202,9 +205,9 @@ export function OrderWorkspace(props: {
       {notice && <p className="bg-amber-100 px-4 py-2 text-sm text-amber-900">{notice}</p>}
 
       <div className="flex border-b border-stone-200 bg-white lg:hidden">
-        {(["menu", "order"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn("flex-1 py-2 text-sm font-medium", tab === t ? "border-b-2 border-brand-600 text-brand-700" : "text-stone-500")}>
-            {t === "menu" ? "Menu" : `Order (${itemCount + cart.length})`}
+        {(["menu", "order"] as const).map((tb) => (
+          <button key={tb} onClick={() => setTab(tb)} className={cn("flex-1 py-2 text-sm font-medium", tab === tb ? "border-b-2 border-brand-600 text-brand-700" : "text-stone-500")}>
+            {tb === "menu" ? t("order.tabMenu") : `${t("order.tabOrder")} (${itemCount + cart.length})`}
           </button>
         ))}
       </div>
@@ -230,7 +233,7 @@ export function OrderWorkspace(props: {
 
             {editable && cart.length > 0 && (
               <div className="rounded-lg border-2 border-dashed border-brand-500/50 p-3">
-                <p className="mb-2 text-xs font-semibold tracking-wide text-brand-700 uppercase">New items</p>
+                <p className="mb-2 text-xs font-semibold tracking-wide text-brand-700 uppercase">{t("order.newItems")}</p>
                 <ul className="space-y-2">
                   {cart.map((l) => (
                     <li key={l.key} className="flex items-center gap-2 text-sm">
@@ -248,20 +251,20 @@ export function OrderWorkspace(props: {
                     </li>
                   ))}
                 </ul>
-                <Input className="mt-3" placeholder="Kitchen note (e.g. less spicy)" value={kotNote} onChange={(e) => setKotNote(e.target.value)} maxLength={200} />
+                <Input className="mt-3" placeholder={t("order.kitchenNote")} value={kotNote} onChange={(e) => setKotNote(e.target.value)} maxLength={200} />
                 {!order && channelName && (
                   <Input className="mt-2" placeholder={`${channelName} order ID`} value={channelRef} onChange={(e) => setChannelRef(e.target.value)} maxLength={40} />
                 )}
                 {!order && !context.tableId && !channelName && (
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <Input placeholder="Customer name" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} />
-                    <Input placeholder="Mobile" inputMode="numeric" maxLength={10} value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} />
+                    <Input placeholder={t("order.customerName")} value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} />
+                    <Input placeholder={t("order.mobile")} inputMode="numeric" maxLength={10} value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} />
                   </div>
                 )}
               </div>
             )}
 
-            {!order && cart.length === 0 && <p className="py-10 text-center text-sm text-stone-500">Tap items on the menu to start the order.</p>}
+            {!order && cart.length === 0 && <p className="py-10 text-center text-sm text-stone-500">{t("order.tapToStart")}</p>}
 
             {order && order.bill.subtotal > 0 && <BillBox order={order} restaurant={restaurant} />}
 
@@ -274,7 +277,7 @@ export function OrderWorkspace(props: {
           {editable && cart.length > 0 && (
             <div className="border-t border-stone-200 p-3">
               <Button className="h-12 w-full text-base" disabled={pending} onClick={send}>
-                <ChefHat size={18} /> {pending ? "Sending..." : `Send to kitchen · ${formatINR(cartTotal)}`}
+                <ChefHat size={18} /> {pending ? t("order.sending") : t("order.sendKot", { total: formatINR(cartTotal) })}
               </Button>
             </div>
           )}
@@ -293,6 +296,7 @@ function KotBlock({
   editable: boolean;
   onAct: Act;
 }) {
+  const t = useT();
   const ready = kot.items.filter((i) => i.status === "READY");
   const pendingApproval = kot.status === "PENDING_APPROVAL";
   return (
@@ -318,9 +322,9 @@ function KotBlock({
               {item.cancelReason && <p className="text-xs text-red-600 no-underline">{item.cancelReason}</p>}
             </div>
             {!pendingApproval && kot.status === "ACCEPTED" && item.held && item.status !== "CANCELLED" ? (
-              <Badge className="bg-purple-100 text-purple-800">On hold · {COURSES[item.course]}</Badge>
+              <Badge className="bg-purple-100 text-purple-800">{t("order.onHold")} · {COURSES[item.course]}</Badge>
             ) : (
-              !pendingApproval && kot.status === "ACCEPTED" && <Badge tone={ITEM_STATUS[item.status].tone}>{ITEM_STATUS[item.status].label}</Badge>
+              !pendingApproval && kot.status === "ACCEPTED" && <Badge tone={ITEM_TONE[item.status]}>{t(`status.${item.status}`)}</Badge>
             )}
             <span className="w-16 text-right">{formatINR(item.unitPrice * item.quantity)}</span>
             {editable && kot.status === "ACCEPTED" && item.status !== "CANCELLED" && item.status !== "SERVED" && (
@@ -338,21 +342,21 @@ function KotBlock({
           </li>
         ))}
       </ul>
-      {kot.note && <p className="border-t border-stone-100 px-3 py-2 text-xs text-stone-600">Note: {kot.note}</p>}
+      {kot.note && <p className="border-t border-stone-100 px-3 py-2 text-xs text-stone-600">{t("order.note", { note: kot.note })}</p>}
       {pendingApproval && (
         <div className="flex gap-2 border-t border-amber-200 p-2">
           <Button size="sm" className="flex-1" onClick={() => onAct(() => acceptKot(kot.id))}>
-            <Check size={14} /> Accept & send to kitchen
+            <Check size={14} /> {t("order.accept")}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => confirm("Reject this customer order?") && onAct(() => rejectKot(kot.id))}>
-            Reject
+          <Button size="sm" variant="secondary" onClick={() => confirm(t("order.rejectConfirm")) && onAct(() => rejectKot(kot.id))}>
+            {t("order.reject")}
           </Button>
         </div>
       )}
       {ready.length > 0 && (
         <div className="border-t border-stone-100 p-2">
           <Button size="sm" variant="secondary" className="w-full" onClick={() => onAct(() => markServed(ready.map((i) => i.id)))}>
-            Mark {ready.length} ready item{ready.length > 1 ? "s" : ""} served
+            {t("order.markServed", { count: ready.length })}
           </Button>
         </div>
       )}
@@ -370,27 +374,57 @@ function Row({ label, value, bold }: { label: string; value: string; bold?: bool
 }
 
 function BillBox({ order, restaurant }: { order: OrderView; restaurant: WorkspaceRestaurant }) {
+  const t = useT();
   const b = order.bill;
   return (
     <dl className="space-y-1 rounded-lg bg-stone-50 p-3 text-sm">
-      <Row label={restaurant.gstMode === "INCLUSIVE" ? "Taxable value" : "Subtotal"} value={formatINR(b.subtotal)} />
+      <Row label={restaurant.gstMode === "INCLUSIVE" ? t("bill.taxable") : t("bill.subtotal")} value={formatINR(b.subtotal)} />
       {b.discount > 0 && (
-        <Row label={`Discount${order.discount?.type === "PERCENT" ? ` (${order.discount.value}%)` : ""}`} value={`- ${formatINR(b.discount)}`} />
+        <Row label={order.coupon ? `${t("bill.coupon")} ${order.coupon.code}` : `${t("bill.discount")}${order.discount?.type === "PERCENT" ? ` (${order.discount.value}%)` : ""}`} value={`- ${formatINR(b.discount)}`} />
       )}
       {order.points.value > 0 && <Row label={`incl. ${order.points.redeemed} loyalty points`} value={`- ${formatINR(order.points.value)}`} />}
-      {b.serviceCharge > 0 && <Row label="Service charge" value={formatINR(b.serviceCharge)} />}
+      {b.serviceCharge > 0 && <Row label={t("bill.serviceCharge")} value={formatINR(b.serviceCharge)} />}
       {b.cgst + b.sgst > 0 && (
         <>
           <Row label="CGST" value={formatINR(b.cgst)} />
           <Row label="SGST" value={formatINR(b.sgst)} />
         </>
       )}
-      {b.roundOff !== 0 && <Row label="Round off" value={formatINR(b.roundOff)} />}
+      {b.roundOff !== 0 && <Row label={t("bill.roundOff")} value={formatINR(b.roundOff)} />}
       <div className="border-t border-stone-200 pt-1">
-        <Row label="Total" value={formatINR(b.grandTotal)} bold />
+        <Row label={t("bill.total")} value={formatINR(b.grandTotal)} bold />
       </div>
-      {order.paid > 0 && <Row label="Paid" value={formatINR(order.paid)} />}
+      {order.paid > 0 && <Row label={t("bill.paid")} value={formatINR(order.paid)} />}
     </dl>
+  );
+}
+
+function CouponBox({ order, pending, onAct }: { order: OrderView; pending: boolean; onAct: Act }) {
+  const t = useT();
+  const [code, setCode] = useState("");
+  if (order.coupon) {
+    return (
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-green-50 px-3 py-2 text-sm">
+        <div>
+          <p className="font-semibold text-green-800">Coupon {order.coupon.code}</p>
+          <p className="text-xs text-green-700">{order.coupon.description}</p>
+        </div>
+        <button className="text-xs text-red-600 hover:underline" disabled={pending} onClick={() => onAct(() => applyCoupon(order.id, ""))}>
+          {t("bill.remove")}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p className="mb-1 text-sm font-semibold">{t("bill.coupon")}</p>
+      <div className="flex gap-2">
+        <Input placeholder="FIRST50" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} />
+        <Button variant="secondary" disabled={pending || !code.trim()} onClick={() => onAct(() => applyCoupon(order.id, code), () => setCode(""))}>
+          {t("bill.apply")}
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -405,6 +439,7 @@ function BillingPanel({
   pending: boolean;
   onAct: Act;
 }) {
+  const t = useT();
   const due = order.bill.grandTotal - order.paid;
   const [discountType, setDiscountType] = useState<"PERCENT" | "FLAT">(order.discount?.type ?? "PERCENT");
   const [discountValue, setDiscountValue] = useState(order.discount ? String(order.discount.value) : "");
@@ -437,8 +472,9 @@ function BillingPanel({
         {!order.channel && <CustomerBox order={order} restaurant={restaurant} pending={pending} onAct={onAct} />}
         {!order.channel && <BuyerBox order={order} pending={pending} onAct={onAct} />}
         {order.channel && <p className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">No GST on this bill: Zomato/Swiggy pay GST on restaurant orders (Section 9(5)).</p>}
-        <p className="text-sm font-semibold">Discount</p>
-        <div className="flex gap-2">
+        {!order.channel && <CouponBox order={order} pending={pending} onAct={onAct} />}
+        {!order.coupon && <p className="text-sm font-semibold">Discount</p>}
+        <div className={cn("flex gap-2", order.coupon && "hidden")}>
           <Select className="w-24" value={discountType} onChange={(e) => setDiscountType(e.target.value as "PERCENT" | "FLAT")}>
             <option value="PERCENT">%</option>
             <option value="FLAT">₹</option>
@@ -453,7 +489,7 @@ function BillingPanel({
           </Button>
         </div>
         <Button className="h-11 w-full" disabled={pending} onClick={() => onAct(() => billOrder(order.id))}>
-          <Printer size={16} /> Generate bill
+          <Printer size={16} /> {t("bill.generate")}
         </Button>
         <button
           className="w-full text-center text-xs text-red-600 hover:underline"
@@ -462,7 +498,7 @@ function BillingPanel({
             if (reason) onAct((pin) => cancelWholeOrder(order.id, reason, pin));
           }}
         >
-          Cancel order
+          {t("bill.cancelOrder")}
         </button>
       </div>
     );
@@ -472,7 +508,7 @@ function BillingPanel({
     <div className="space-y-3 rounded-lg p-3 ring-1 ring-stone-200">
       <div className="flex gap-2">
         <Link href={`/dashboard/orders/${order.id}/invoice`} target="_blank" className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg text-sm font-medium ring-1 ring-stone-300 hover:bg-stone-50">
-          <Printer size={16} /> Print bill
+          <Printer size={16} /> {t("bill.print")}
         </Link>
         <a
           href={`https://wa.me/${order.customerPhone ? `91${order.customerPhone}` : ""}?text=${encodeURIComponent(shareText)}`}

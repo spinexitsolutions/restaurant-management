@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { notifyBillPaid } from "@/server/whatsapp";
+import { notifyItemsReady } from "@/server/push";
 import { z } from "zod";
 import { requireRestaurantSession } from "@/lib/auth";
 import { toPaise } from "@/lib/gst";
@@ -30,6 +31,7 @@ import {
   splitOrder,
   transferOrder,
   mergeOrders,
+  applyCouponCode,
 } from "@/server/orders";
 
 export type ActionResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -112,7 +114,9 @@ export async function rejectKot(kotId: string) {
 /** Kitchen moves items NEW -> PREPARING -> READY. */
 export async function kitchenAdvance(itemIds: string[], to?: "PREPARING" | "READY") {
   const s = await requireRestaurantSession(KITCHEN_ROLES);
-  return run(() => advanceItems(s.restaurantId, itemIds, to));
+  const res = await run(() => advanceItems(s.restaurantId, itemIds, to));
+  if (res.ok && to !== "PREPARING") after(() => notifyItemsReady(s.restaurantId, itemIds).catch(console.error));
+  return res;
 }
 
 /** Floor staff mark items served. */
@@ -147,6 +151,15 @@ export async function applyDiscount(orderId: string, type: "PERCENT" | "FLAT", v
     const approvedBy = value > 0 ? await approve(s, pin) : null;
     await setDiscount(s.restaurantId, orderId, value > 0 ? { type, value, note } : null);
     await audit({ restaurantId: s.restaurantId, actor: s, approvedBy, action: value > 0 ? "DISCOUNT_APPLIED" : "DISCOUNT_REMOVED", orderId, details: { type, value, note } });
+  });
+}
+
+export async function applyCoupon(orderId: string, code: string) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  return run(async () => {
+    const res = await applyCouponCode(s.restaurantId, orderId, code.slice(0, 30));
+    await audit({ restaurantId: s.restaurantId, actor: s, action: res ? "COUPON_APPLIED" : "COUPON_REMOVED", orderId, details: { code: res?.code ?? null } });
+    return res;
   });
 }
 

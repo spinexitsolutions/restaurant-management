@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { BellRing, CheckCircle2, Clock, Droplets, Plus, Receipt } from "lucide-react";
+import { BellRing, CheckCircle2, Clock, Droplets, Plus, Receipt, TicketPercent } from "lucide-react";
 import { FoodTypeIcon } from "@/components/ui";
 import { formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useLiveRefresh } from "@/hooks/use-live";
 import { loadRazorpay } from "@/lib/client/razorpay-checkout";
 import type { OrderView } from "@/server/order-view";
-import { confirmRazorpayPayment, requestService, startRazorpayPayment } from "../../../actions";
+import { applyGuestCoupon, confirmRazorpayPayment, requestService, startRazorpayPayment } from "../../../actions";
 import { RateDishes, SplitPay } from "./split-pay";
 
 const STATUS_TEXT = { NEW: "Order received", PREPARING: "Being prepared", READY: "Ready", SERVED: "Served", CANCELLED: "Cancelled" };
@@ -33,6 +33,7 @@ export function OrderTracker({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ ok?: string; error?: string } | null>(null);
+  const [code, setCode] = useState("");
   useLiveRefresh({ orderToken: order.publicToken, intervalMs: 5000 });
 
   const waitingApproval = order.kots.some((k) => k.status === "PENDING_APPROVAL");
@@ -45,6 +46,17 @@ export function OrderTracker({
     start(async () => {
       const res = await requestService(order.publicToken, type);
       setMessage(res.ok ? { ok: text } : { error: res.error });
+    });
+  }
+
+  function coupon(value: string) {
+    setMessage(null);
+    start(async () => {
+      const res = await applyGuestCoupon(order.publicToken, value);
+      if (!res.ok) return setMessage({ error: res.error });
+      setCode("");
+      setMessage({ ok: res.data ? `Coupon ${res.data.code} applied: ${res.data.description}` : "Coupon removed" });
+      router.refresh();
     });
   }
 
@@ -145,9 +157,40 @@ export function OrderTracker({
           </div>
         )}
 
+        {order.status === "OPEN" && !order.channel && (
+          order.coupon ? (
+            <div className="flex items-center justify-between rounded-xl bg-green-50 px-4 py-3 text-sm">
+              <span className="flex items-center gap-2 font-semibold text-green-800">
+                <TicketPercent size={16} /> {order.coupon.code} · {order.coupon.description}
+              </span>
+              <button disabled={pending} onClick={() => coupon("")} className="text-xs text-red-600 underline">
+                Remove
+              </button>
+            </div>
+          ) : (
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (code.trim()) coupon(code);
+              }}
+            >
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="Have a coupon code?"
+                className="h-11 min-w-0 flex-1 rounded-lg px-3 text-sm ring-1 ring-stone-300 outline-none focus:ring-2 focus:ring-[var(--theme)]"
+              />
+              <button disabled={pending || !code.trim()} className="rounded-lg px-4 text-sm font-semibold text-white disabled:opacity-50" style={{ background: "var(--theme)" }}>
+                Apply
+              </button>
+            </form>
+          )
+        )}
+
         <dl className="space-y-1 rounded-xl bg-stone-50 p-4 text-sm">
           <Row label="Subtotal" value={order.bill.subtotal} />
-          {order.bill.discount > 0 && <Row label="Discount" value={-order.bill.discount} />}
+          {order.bill.discount > 0 && <Row label={order.coupon ? `Coupon ${order.coupon.code}` : "Discount"} value={-order.bill.discount} />}
           {order.bill.serviceCharge > 0 && <Row label="Service charge" value={order.bill.serviceCharge} />}
           {order.bill.cgst + order.bill.sgst > 0 && (
             <>

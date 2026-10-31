@@ -1,5 +1,7 @@
 import "server-only";
-import type { Kot, Order, OrderItem, Restaurant } from "@prisma/client";
+import type { Coupon, Kot, Order, OrderItem, Restaurant } from "@prisma/client";
+import { couponDiscount, describeCoupon } from "@/lib/coupons";
+import { toRule } from "./coupons";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/gst";
 import { orderBill } from "@/lib/order-bill";
@@ -45,6 +47,7 @@ export interface OrderView {
   customerPhone: string | null;
   invoiceNumber: string | null;
   discount: { type: "PERCENT" | "FLAT"; value: number; note: string | null } | null;
+  coupon: { code: string; description: string } | null;
   points: { redeemed: number; value: number; earned: number };
   customer: { id: string; name: string | null; phone: string; points: number; visits: number; gstin: string | null; businessName: string | null; businessAddress: string | null } | null;
   buyer: { gstin: string; name: string | null; address: string | null } | null;
@@ -67,6 +70,7 @@ const orderInclude = {
   customer: { select: { id: true, name: true, phone: true, points: true, visits: true, gstin: true, businessName: true, businessAddress: true } },
   kots: { orderBy: { createdAt: "asc" as const }, include: { items: { orderBy: { createdAt: "asc" as const } } } },
   payments: { orderBy: { createdAt: "asc" as const } },
+  coupon: true,
 };
 
 type LoadedOrder = NonNullable<Awaited<ReturnType<typeof findOrder>>>;
@@ -75,7 +79,7 @@ function findOrder(where: { id: string; restaurantId: string } | { publicToken: 
   return db.order.findFirst({ where, include: orderInclude });
 }
 
-export function billFor(order: Order & { kots: (Kot & { items: OrderItem[] })[] }, r: Pick<Restaurant, "gstEnabled" | "gstMode" | "serviceChargeEnabled" | "serviceChargeRate">): BillSummary {
+export function billFor(order: Order & { kots: (Kot & { items: OrderItem[] })[]; coupon?: Coupon | null }, r: Pick<Restaurant, "gstEnabled" | "gstMode" | "serviceChargeEnabled" | "serviceChargeRate">): BillSummary {
   if (order.status === "BILLED" || order.status === "PAID") {
     return {
       subtotal: toPaise(order.subtotal!),
@@ -89,12 +93,12 @@ export function billFor(order: Order & { kots: (Kot & { items: OrderItem[] })[] 
   }
   // Running bill: accepted items only, with the restaurant's current settings (no GST for aggregator orders).
   const items = order.kots.filter((k) => k.status === "ACCEPTED").flatMap((k) => k.items);
-  const b = orderBill(
-    items,
-    { gstEnabled: r.gstEnabled && !order.channel, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled && !order.channel ? r.serviceChargeRate : 0 },
-    { type: order.discountType, value: order.discountValue },
-    toPaise(order.pointsRedeemValue),
-  );
+  const settings = { gstEnabled: r.gstEnabled && !order.channel, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled && !order.channel ? r.serviceChargeRate : 0 };
+  // A coupon is shown as the flat amount it is worth on the current subtotal; billing re-checks its rules.
+  const discount = order.coupon
+    ? { type: "FLAT", value: couponDiscount(toRule(order.coupon), orderBill(items, settings).subtotal) / 100 }
+    : { type: order.discountType, value: order.discountValue };
+  const b = orderBill(items, settings, discount, toPaise(order.pointsRedeemValue));
   return { subtotal: b.subtotal, discount: b.discount, serviceCharge: b.serviceCharge, cgst: b.cgst, sgst: b.sgst, roundOff: b.roundOff, grandTotal: b.grandTotal };
 }
 
@@ -117,6 +121,7 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
       order.discountType && order.discountValue
         ? { type: order.discountType as "PERCENT" | "FLAT", value: Number(order.discountValue), note: order.discountNote }
         : null,
+    coupon: order.coupon ? { code: order.coupon.code, description: describeCoupon(toRule(order.coupon)) } : null,
     points: { redeemed: order.pointsRedeemed, value: toPaise(order.pointsRedeemValue), earned: order.pointsEarned },
     customer: order.customer,
     buyer: order.buyerGstin ? { gstin: order.buyerGstin, name: order.buyerName, address: order.buyerAddress } : null,

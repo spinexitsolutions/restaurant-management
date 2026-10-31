@@ -3,13 +3,14 @@
 import { after } from "next/server";
 import { z } from "zod";
 import { notifyBillPaid } from "@/server/whatsapp";
+import { notifyQrOrder, notifyServiceRequest } from "@/server/push";
 import { normaliseShare } from "@/lib/split";
 import { decrypt } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/gst";
 import { getOnlinePaymentMode } from "@/lib/payments";
 import { createRazorpayOrder, fetchRazorpayOrder, verifyPaymentSignature } from "@/lib/razorpay";
-import { createServiceRequest, OrderError, placeItems, recordPayment } from "@/server/orders";
+import { applyCouponCode, createServiceRequest, OrderError, placeItems, recordPayment } from "@/server/orders";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -63,6 +64,7 @@ export async function placeQrOrder(input: z.input<typeof placeSchema>) {
       createdById: null,
       note: d.note,
     });
+    if (!restaurant.autoAcceptQrOrders) after(() => notifyQrOrder(restaurant.id, order.id).catch(console.error));
     return { token: order.publicToken };
   });
 }
@@ -77,11 +79,22 @@ export async function requestService(token: string, type: "CALL_WAITER" | "REQUE
   return run(async () => {
     const order = await orderByToken(token);
     if (!order.tableId || order.status === "PAID" || order.status === "CANCELLED") throw new OrderError("This order is closed");
-    await createServiceRequest(order.restaurantId, order.tableId, z.enum(["CALL_WAITER", "REQUEST_BILL", "WATER"]).parse(type));
+    const kind = z.enum(["CALL_WAITER", "REQUEST_BILL", "WATER"]).parse(type);
+    await createServiceRequest(order.restaurantId, order.tableId, kind);
+    const tableId = order.tableId;
+    after(() => notifyServiceRequest(order.restaurantId, tableId, kind).catch(console.error));
   });
 }
 
-/** Creates a Razorpay order for the amount still due on a billed order. */
+/** Lets the guest apply (or remove, with an empty code) a coupon before the bill is generated. */
+export async function applyGuestCoupon(token: string, code: string) {
+  return run(async () => {
+    const order = await orderByToken(token);
+    if (order.status !== "OPEN") throw new OrderError("Ask the staff to change the coupon on a generated bill");
+    return applyCouponCode(order.restaurantId, order.id, z.string().max(30).parse(code));
+  });
+}
+
 /** Starts an online payment for the whole amount due, or for one person's share when `sharePaise` is given. */
 export async function startRazorpayPayment(token: string, sharePaise?: number) {
   return run(async () => {

@@ -9,6 +9,8 @@ import { subscriptionStatus } from "@/lib/plans";
 import { COURSES, holdPlan, nextCourse } from "@/lib/courses";
 import { onBilled, onPaid, refundPoints } from "./customers";
 import { consumeItems, returnItems } from "./inventory";
+import { evaluateCoupon, findCoupon, toRule } from "./coupons";
+import { describeCoupon } from "@/lib/coupons";
 import { enqueueBill, enqueueKot } from "./printing";
 
 type Tx = Prisma.TransactionClient;
@@ -290,8 +292,8 @@ export async function setDiscount(restaurantId: string, orderId: string, discoun
     await tx.order.update({
       where: { id: orderId },
       data: discount?.value
-        ? { discountType: discount.type, discountValue: discount.value, discountNote: discount.note.trim() || null }
-        : { discountType: null, discountValue: null, discountNote: null },
+        ? { discountType: discount.type, discountValue: discount.value, discountNote: discount.note.trim() || null, couponId: null }
+        : { discountType: null, discountValue: null, discountNote: null, couponId: null },
     });
     await bumpLive(tx, restaurantId);
   });
@@ -316,12 +318,23 @@ export async function generateBill(restaurantId: string, orderId: string) {
     const aggregator = !!order.channel;
     const serviceChargeRate = !aggregator && r.serviceChargeEnabled ? r.serviceChargeRate : 0;
     const gstEnabled = r.gstEnabled && !aggregator;
-    const bill = orderBill(
-      billable,
-      { gstEnabled, gstMode: r.gstMode, serviceChargeRate },
-      { type: order.discountType, value: order.discountValue },
-      toPaise(order.pointsRedeemValue),
-    );
+    const settings = { gstEnabled, gstMode: r.gstMode, serviceChargeRate };
+
+    // A coupon is re-checked now (items or the customer may have changed since it was applied)
+    // and becomes a flat discount on the bill.
+    let discount: { type: string | null; value: Prisma.Decimal | number | null } = { type: order.discountType, value: order.discountValue };
+    let couponPaise = 0;
+    if (order.couponId) {
+      await tx.$executeRaw`SELECT 1 FROM "Coupon" WHERE id = ${order.couponId} FOR UPDATE`;
+      const coupon = await tx.coupon.findUniqueOrThrow({ where: { id: order.couponId } });
+      const subtotal = orderBill(billable, settings).subtotal;
+      const res = await evaluateCoupon(tx, restaurantId, coupon, order, subtotal);
+      if ("error" in res) throw new OrderError(`${res.error}. Remove the coupon to continue.`);
+      couponPaise = res.discount;
+      discount = { type: "FLAT", value: couponPaise / 100 };
+      await tx.order.update({ where: { id: orderId }, data: { discountType: "FLAT", discountValue: couponPaise / 100, discountNote: `Coupon ${coupon.code}` } });
+    }
+    const bill = orderBill(billable, settings, discount, toPaise(order.pointsRedeemValue));
 
     const updated = await tx.order.update({
       where: { id: orderId },
@@ -345,6 +358,14 @@ export async function generateBill(restaurantId: string, orderId: string) {
       await tx.serviceRequest.updateMany({ where: { tableId: order.tableId, type: "REQUEST_BILL", resolvedAt: null }, data: { resolvedAt: new Date() } });
     }
     await onBilled(tx, updated);
+    if (order.couponId) {
+      const customerId = (await tx.order.findUniqueOrThrow({ where: { id: orderId }, select: { customerId: true } })).customerId;
+      await tx.couponRedemption.upsert({
+        where: { orderId },
+        update: { couponId: order.couponId, customerId, amount: couponPaise / 100 },
+        create: { couponId: order.couponId, orderId, customerId, amount: couponPaise / 100 },
+      });
+    }
     await enqueueBill(tx, restaurantId, orderId);
     await bumpLive(tx, restaurantId);
     return updated;
@@ -358,8 +379,13 @@ export async function reopenBill(restaurantId: string, orderId: string) {
     if (!order) throw new OrderError("Order not found");
     if (order.status !== "BILLED") throw new OrderError("Only a billed order can be reopened");
     if (order._count.payments > 0) throw new OrderError("A payment is already recorded on this bill");
-    await tx.order.update({ where: { id: orderId }, data: { status: "OPEN", billedAt: null } });
+    await tx.order.update({
+      where: { id: orderId },
+      // A coupon's amount was frozen into the discount fields at billing; clear them so it is recalculated.
+      data: { status: "OPEN", billedAt: null, ...(order.couponId ? { discountType: null, discountValue: null, discountNote: null } : {}) },
+    });
     await refundPoints(tx, order);
+    await tx.couponRedemption.deleteMany({ where: { orderId } });
     await bumpLive(tx, restaurantId);
   });
 }
@@ -428,6 +454,7 @@ export async function cancelOrder(restaurantId: string, orderId: string, reason:
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelReason: reason.trim() } });
     await tx.orderItem.updateMany({ where: { orderId, status: { not: "CANCELLED" } }, data: { status: "CANCELLED", cancelReason: "Order cancelled" } });
     await refundPoints(tx, order);
+    await tx.couponRedemption.deleteMany({ where: { orderId } });
     await tx.kot.updateMany({ where: { orderId, status: "PENDING_APPROVAL" }, data: { status: "REJECTED" } });
     await bumpLive(tx, restaurantId);
   });
@@ -660,5 +687,32 @@ export async function fireNextCourse(restaurantId: string, orderId: string) {
     }
     await bumpLive(tx, restaurantId);
     return { course: COURSES[course], count: firing.length };
+  });
+}
+
+/** Puts a coupon on a running order (replacing any manual discount). Empty code removes it. */
+export async function applyCouponCode(restaurantId: string, orderId: string, code: string) {
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, restaurantId }, include: { items: { include: { kot: { select: { status: true } } } } } });
+    if (!order) throw new OrderError("Order not found");
+    if (order.status !== "OPEN") throw new OrderError("Reopen the bill to change the coupon");
+    if (!code.trim()) {
+      await tx.order.update({ where: { id: orderId }, data: { couponId: null, discountType: null, discountValue: null, discountNote: null } });
+      await bumpLive(tx, restaurantId);
+      return null;
+    }
+    if (order.channel) throw new OrderError("Coupons can't be used on Zomato/Swiggy orders");
+    const coupon = await findCoupon(tx, restaurantId, code);
+    if (!coupon) throw new OrderError("No such coupon");
+    const r = await tx.restaurant.findUniqueOrThrow({ where: { id: restaurantId } });
+    const subtotal = orderBill(
+      order.items.filter((i) => i.kot.status === "ACCEPTED"),
+      { gstEnabled: r.gstEnabled, gstMode: r.gstMode, serviceChargeRate: r.serviceChargeEnabled ? r.serviceChargeRate : 0 },
+    ).subtotal;
+    const res = await evaluateCoupon(tx, restaurantId, coupon, order, subtotal);
+    if ("error" in res) throw new OrderError(res.error);
+    await tx.order.update({ where: { id: orderId }, data: { couponId: coupon.id, discountType: null, discountValue: null, discountNote: null } });
+    await bumpLive(tx, restaurantId);
+    return { code: coupon.code, description: describeCoupon(toRule(coupon)) };
   });
 }
