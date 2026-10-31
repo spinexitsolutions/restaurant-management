@@ -72,7 +72,10 @@ export async function loadInsights(restaurantId: string, now: Date = new Date())
     };
   });
 
+  const ratingRows = await db.dishRating.groupBy({ by: ["menuItemId"], where: { restaurantId }, _avg: { rating: true }, _count: true });
+  const nameOf = new Map(menu.map((m) => [m.id, m.name]));
   const insights = buildInsights({
+    ratings: ratingRows.filter((r) => nameOf.has(r.menuItemId)).map((r) => ({ name: nameOf.get(r.menuItemId)!, average: r._avg.rating ?? 0, count: r._count })),
     dailySales,
     items,
     hours: [...hours].map(([hour, amount]) => ({ hour, amount })),
@@ -85,7 +88,13 @@ export async function loadInsights(restaurantId: string, now: Date = new Date())
     istDate(new Date(now.getTime() + DAY)),
   );
   const top = [...items].sort((a, b) => b.amountNow - a.amountNow).slice(0, 8);
-  return { dailySales, insights, forecast, top, totals: { last28: dailySales.reduce((s, d) => s + d.amount, 0), bills: orders.length } };
+  const comments = await db.dishRating.findMany({
+    where: { restaurantId, comment: { not: null } },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+    select: { rating: true, comment: true, createdAt: true, menuItem: { select: { name: true } } },
+  });
+  return { dailySales, insights, forecast, top, comments, totals: { last28: dailySales.reduce((s, d) => s + d.amount, 0), bills: orders.length } };
 }
 
 export const aiAvailable = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);

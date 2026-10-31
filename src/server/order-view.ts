@@ -16,6 +16,7 @@ export interface BillSummary {
 
 export interface OrderItemView {
   id: string;
+  menuItemId: string | null;
   name: string;
   variantName: string | null;
   addons: string[];
@@ -127,6 +128,7 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
       createdAt: k.createdAt.toISOString(),
       items: k.items.map((i) => ({
         id: i.id,
+        menuItemId: i.menuItemId,
         name: i.name,
         variantName: i.variantName,
         addons: (i.addons as { name: string }[]).map((a) => a.name),

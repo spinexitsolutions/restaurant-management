@@ -22,6 +22,7 @@ export default async function NewItemPage({ searchParams }: { searchParams: Prom
         categories={categories}
         defaultGstRate={restaurant.defaultGstRate.toString()}
         stations={await db.kitchenStation.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } })}
+        otherItems={await db.menuItem.findMany({ where: { restaurantId }, orderBy: { name: "asc" }, select: { id: true, name: true } })}
         initial={{
           categoryId: categories.find((c) => c.id === category)?.id ?? categories[0].id,
           name: "",
@@ -34,6 +35,10 @@ export default async function NewItemPage({ searchParams }: { searchParams: Prom
           isBestseller: false,
           spiceLevel: "0",
           stationId: "",
+          isKidsFriendly: false,
+          gallery: [],
+          videoUrl: "",
+          pairsWith: [],
           prepTimeMinutes: "",
           variants: [],
           addonGroups: [],

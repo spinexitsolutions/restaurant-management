@@ -11,6 +11,14 @@ type Variant = { name: string; price: string };
 type AddonOption = { name: string; price: string };
 type AddonGroup = { name: string; minSelect: string; maxSelect: string; options: AddonOption[] };
 
+// Build-your-own thali: required picks are free, extras cost more. Owners edit names and prices.
+const THALI_TEMPLATE: AddonGroup[] = [
+  { name: "Choose 2 sabzi", minSelect: "2", maxSelect: "2", options: ["Paneer Butter Masala", "Mix Veg", "Aloo Gobi", "Bhindi Masala"].map((name) => ({ name, price: "" })) },
+  { name: "Choose dal", minSelect: "1", maxSelect: "1", options: ["Dal Tadka", "Dal Makhani"].map((name) => ({ name, price: "" })) },
+  { name: "Choose bread", minSelect: "1", maxSelect: "1", options: ["4 Tawa Roti", "2 Butter Naan"].map((name) => ({ name, price: "" })) },
+  { name: "Add extras", minSelect: "0", maxSelect: "3", options: [{ name: "Jeera Rice", price: "40" }, { name: "Gulab Jamun", price: "30" }, { name: "Salad", price: "20" }] },
+];
+
 export interface ItemFormValues {
   id?: string;
   categoryId: string;
@@ -22,6 +30,10 @@ export interface ItemFormValues {
   gstRate: string;
   isAvailable: boolean;
   isBestseller: boolean;
+  isKidsFriendly: boolean;
+  gallery: string[];
+  videoUrl: string;
+  pairsWith: string[];
   spiceLevel: string;
   stationId: string;
   prepTimeMinutes: string;
@@ -34,11 +46,13 @@ export function ItemForm({
   categories,
   defaultGstRate,
   stations,
+  otherItems,
 }: {
   initial: ItemFormValues;
   categories: { id: string; name: string }[];
   defaultGstRate: string;
   stations: { id: string; name: string }[];
+  otherItems: { id: string; name: string }[];
 }) {
   const [v, setV] = useState(initial);
   const [error, setError] = useState<string | null>(null);
@@ -142,8 +156,55 @@ export function ItemForm({
             <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={v.isBestseller} onChange={(e) => set("isBestseller", e.target.checked)} />
             Mark as bestseller
           </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={v.isKidsFriendly} onChange={(e) => set("isKidsFriendly", e.target.checked)} />
+            Kids friendly
+          </label>
         </div>
       </Card>
+
+      <Card className="space-y-3">
+        <div>
+          <h2 className="font-semibold">More photos &amp; video</h2>
+          <p className="text-sm text-stone-500">Shown when a customer taps the dish. Good photos sell more.</p>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          {v.gallery.map((url, i) => (
+            <ImageUpload key={`${i}-${url}`} value={url} onChange={(u) => set("gallery", u ? v.gallery.map((x, j) => (j === i ? u : x)) : v.gallery.filter((_, j) => j !== i))} />
+          ))}
+          {v.gallery.length < 4 && <ImageUpload key={`new-${v.gallery.length}`} value="" label="Add photo" onChange={(u) => u && set("gallery", [...v.gallery, u])} />}
+        </div>
+        <Field label="Video link (optional)" hint="YouTube link, or an https link to an .mp4 file">
+          <Input value={v.videoUrl} onChange={(e) => set("videoUrl", e.target.value)} placeholder="https://youtu.be/..." />
+        </Field>
+      </Card>
+
+      {otherItems.length > 0 && (
+        <Card className="space-y-3">
+          <div>
+            <h2 className="font-semibold">Goes well with</h2>
+            <p className="text-sm text-stone-500">
+              Suggested to the customer after they add this dish (up to 6). Dishes often ordered together are suggested automatically too.
+            </p>
+          </div>
+          <div className="flex max-h-48 flex-wrap gap-2 overflow-y-auto">
+            {otherItems.map((o) => {
+              const on = v.pairsWith.includes(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => set("pairsWith", on ? v.pairsWith.filter((x) => x !== o.id) : [...v.pairsWith, o.id].slice(0, 6))}
+                  className={`rounded-full px-3 py-1 text-sm ring-1 ${on ? "bg-brand-50 font-medium text-brand-700 ring-brand-500" : "ring-stone-200"}`}
+                >
+                  {on ? "✓ " : ""}
+                  {o.name}
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       <Card className="space-y-3">
         <div className="flex items-center justify-between">
@@ -172,14 +233,21 @@ export function ItemForm({
             <h2 className="font-semibold">Add-ons</h2>
             <p className="text-sm text-stone-500">Extras like &ldquo;Extra cheese&rdquo; or &ldquo;Choose your dip&rdquo;.</p>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => set("addonGroups", [...v.addonGroups, { name: "", minSelect: "0", maxSelect: "1", options: [{ name: "", price: "" }] }])}
-          >
-            <Plus size={14} /> Add-on group
-          </Button>
+          <div className="flex gap-2">
+            {v.addonGroups.length === 0 && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => set("addonGroups", THALI_TEMPLATE)} title="Pre-fill choices for a build-your-own thali">
+                Thali template
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => set("addonGroups", [...v.addonGroups, { name: "", minSelect: "0", maxSelect: "1", options: [{ name: "", price: "" }] }])}
+            >
+              <Plus size={14} /> Add-on group
+            </Button>
+          </div>
         </div>
         {v.addonGroups.map((g, gi) => (
           <div key={gi} className="space-y-3 rounded-lg border border-stone-200 p-4">

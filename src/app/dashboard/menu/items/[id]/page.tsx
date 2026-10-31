@@ -15,6 +15,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
       include: {
         variants: { orderBy: { sortOrder: "asc" } },
         addonGroups: { orderBy: { sortOrder: "asc" }, include: { options: { orderBy: { sortOrder: "asc" } } } },
+        media: { orderBy: { sortOrder: "asc" } },
       },
     }),
     db.category.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
@@ -29,6 +30,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
         categories={categories}
         defaultGstRate={restaurant.defaultGstRate.toString()}
         stations={await db.kitchenStation.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } })}
+        otherItems={await db.menuItem.findMany({ where: { restaurantId, id: { not: id } }, orderBy: { name: "asc" }, select: { id: true, name: true } })}
         initial={{
           id: item.id,
           categoryId: item.categoryId,
@@ -42,6 +44,10 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
           isBestseller: item.isBestseller,
           spiceLevel: String(item.spiceLevel),
           stationId: item.stationId ?? "",
+          isKidsFriendly: item.isKidsFriendly,
+          gallery: item.media.filter((m) => m.kind === "IMAGE").map((m) => m.url),
+          videoUrl: item.media.find((m) => m.kind === "VIDEO")?.url ?? "",
+          pairsWith: item.pairsWith,
           prepTimeMinutes: item.prepTimeMinutes ? String(item.prepTimeMinutes) : "",
           variants: item.variants.map((x) => ({ name: x.name, price: x.price.toString() })),
           addonGroups: item.addonGroups.map((g) => ({

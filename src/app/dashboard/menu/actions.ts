@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { parseVideoUrl } from "@/lib/media";
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -67,6 +68,19 @@ const itemSchema = z.object({
   gstRate: z.union([z.literal(""), z.coerce.number().min(0).max(28)]).optional().default(""),
   isAvailable: z.boolean(),
   isBestseller: z.boolean(),
+  isKidsFriendly: z.boolean().optional().default(false),
+  gallery: z
+    .array(z.union([z.string().trim().regex(/^\/api\/images\/[a-z0-9]+$/), z.string().trim().url()]))
+    .max(4, "Up to 4 extra photos")
+    .optional()
+    .default([]),
+  videoUrl: z
+    .string()
+    .trim()
+    .optional()
+    .default("")
+    .refine((s) => !s || parseVideoUrl(s) !== null, "Video must be a YouTube link or an https .mp4 / .webm link"),
+  pairsWith: z.array(z.string()).max(6, "Pick up to 6 dishes to suggest").optional().default([]),
   spiceLevel: z.coerce.number().int().min(0).max(3),
   stationId: z.string().optional().default(""),
   prepTimeMinutes: z.union([z.literal(""), z.coerce.number().int().min(1).max(240)]).optional().default(""),
@@ -101,6 +115,9 @@ export async function saveItem(input: ItemInput): Promise<FormState> {
 
   const category = await db.category.findFirst({ where: { id: d.categoryId, restaurantId } });
   if (!category) return { error: "Category not found" };
+  if (d.pairsWith.length && (await db.menuItem.count({ where: { id: { in: d.pairsWith }, restaurantId } })) !== new Set(d.pairsWith).size) {
+    return { error: "A suggested dish wasn't found" };
+  }
   if (d.stationId && !(await db.kitchenStation.findFirst({ where: { id: d.stationId, restaurantId } }))) return { error: "Kitchen station not found" };
 
   const fields = {
@@ -113,11 +130,18 @@ export async function saveItem(input: ItemInput): Promise<FormState> {
     gstRate: d.gstRate === "" ? null : d.gstRate,
     isAvailable: d.isAvailable,
     isBestseller: d.isBestseller,
+    isKidsFriendly: d.isKidsFriendly,
+    pairsWith: d.pairsWith.filter((id) => id !== d.id),
     spiceLevel: d.spiceLevel,
     stationId: d.stationId || null,
     prepTimeMinutes: d.prepTimeMinutes === "" ? null : d.prepTimeMinutes,
   };
+  const media = [
+    ...d.gallery.map((url, i) => ({ kind: "IMAGE", url, sortOrder: i })),
+    ...(d.videoUrl ? [{ kind: "VIDEO", url: d.videoUrl, sortOrder: 99 }] : []),
+  ];
   const nested = {
+    media: { create: media },
     variants: { create: d.variants.map((v, i) => ({ ...v, sortOrder: i })) },
     addonGroups: {
       create: d.addonGroups.map((g, i) => ({
@@ -135,6 +159,7 @@ export async function saveItem(input: ItemInput): Promise<FormState> {
     if (!existing) return { error: "Item not found" };
     await db.$transaction([
       db.itemVariant.deleteMany({ where: { menuItemId: d.id } }),
+      db.itemMedia.deleteMany({ where: { menuItemId: d.id } }),
       db.addonGroup.deleteMany({ where: { menuItemId: d.id } }),
       db.menuItem.update({ where: { id: d.id }, data: { ...fields, ...nested } }),
     ]);

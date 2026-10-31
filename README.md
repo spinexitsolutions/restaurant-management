@@ -87,6 +87,17 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Print agent (`print-agent/agent.mjs`) | For network printers (port 9100) or USB device paths: a dependency-free Node script that runs on a PC in the restaurant with the printer's token |
 | B2B invoices | Buyer GSTIN (format, state code and check digit validated), business name and address on the tax invoice and printed bill, remembered on the customer. The sales register CSV marks each bill B2B, B2C or Sec 9(5) with buyer GSTIN for GSTR-1 |
 
+## Customer menu experience
+
+| Feature | How it works |
+|---|---|
+| Split bill from phones | On the bill page each guest can pay the full bill, an equal share (2-20 people), just their dishes (their share of tax/discount included) or any amount, by Razorpay (recorded automatically) or UPI QR (staff confirms). "Share with friends" sends the link on WhatsApp, and everyone sees what's been paid |
+| Dish gallery & video | Up to 4 extra photos and a YouTube / .mp4 video per dish. Tapping a dish opens a detail view with photos, video, rating and pairings |
+| "Goes well with" | Owner-chosen pairings first, then dishes customers ordered together in the last 60 days (seen in at least 2 orders). Shown after adding a dish, in the dish view and in the cart |
+| Order again | The phone remembers its last order per restaurant; next visit it's one tap to add it again (unavailable dishes are skipped). Kept on the device, so no one can look up another person's orders by phone number |
+| Thali builder & kids | "Thali template" pre-fills choose-2-sabzi / dal / bread / extras groups; customers see per-group progress. Dishes can be marked kids-friendly, with a Kids filter on the menu |
+| Dish ratings | After paying, guests rate each dish (1-5 stars, optional comment) once, within 7 days. The menu shows the average after 3 ratings; owners see ratings in the menu list, comments and poorly rated dishes in Insights |
+
 ## Going live (Vercel + Supabase)
 
 1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.

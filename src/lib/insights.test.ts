@@ -43,6 +43,18 @@ describe("buildInsights", () => {
     });
     expect(insights.some((i) => i.title.includes("hardly selling"))).toBe(false);
   });
+  it("flags dishes customers rate poorly, once there are enough ratings", () => {
+    const base = { dailySales: [], items: [], hours: [], discountShare: 0, cancelledItems: 0 };
+    const titles = buildInsights({
+      ...base,
+      ratings: [
+        { name: "Egg Curry", average: 2.8, count: 9 },
+        { name: "Soup", average: 2.0, count: 2 },
+        { name: "Naan", average: 4.7, count: 30 },
+      ],
+    }).map((i) => i.title);
+    expect(titles).toEqual(["Customers rate 1 dish poorly"]);
+  });
   it("stays quiet without history", () => {
     expect(buildInsights({ dailySales: [], items: [], hours: [], discountShare: 0, cancelledItems: 0 })).toEqual([]);
   });

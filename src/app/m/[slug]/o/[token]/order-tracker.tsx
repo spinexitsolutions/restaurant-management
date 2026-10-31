@@ -12,6 +12,7 @@ import { useLiveRefresh } from "@/hooks/use-live";
 import { loadRazorpay } from "@/lib/client/razorpay-checkout";
 import type { OrderView } from "@/server/order-view";
 import { confirmRazorpayPayment, requestService, startRazorpayPayment } from "../../../actions";
+import { RateDishes, SplitPay } from "./split-pay";
 
 const STATUS_TEXT = { NEW: "Order received", PREPARING: "Being prepared", READY: "Ready", SERVED: "Served", CANCELLED: "Cancelled" };
 const STATUS_COLOR = { NEW: "text-stone-500", PREPARING: "text-amber-600", READY: "text-green-600", SERVED: "text-stone-400", CANCELLED: "text-red-500" };
@@ -21,11 +22,13 @@ export function OrderTracker({
   restaurant,
   menuUrl,
   payment,
+  ratedItemIds,
 }: {
   order: OrderView;
   restaurant: { name: string; slug: string; themeColor: string };
   menuUrl: string;
-  payment: { mode: OnlinePaymentMode; upiLink: string | null; upiQr: string | null };
+  payment: { mode: OnlinePaymentMode; upi: { id: string; name: string } | null };
+  ratedItemIds: string[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -45,10 +48,10 @@ export function OrderTracker({
     });
   }
 
-  function payOnline() {
+  function payOnline(amountPaise: number) {
     setMessage(null);
     start(async () => {
-      const res = await startRazorpayPayment(order.publicToken);
+      const res = await startRazorpayPayment(order.publicToken, amountPaise);
       if (!res.ok) return setMessage({ error: res.error });
       if (!(await loadRazorpay()) || !window.Razorpay) return setMessage({ error: "Couldn't load the payment page. Check your internet." });
       const { keyId, razorpayOrderId, amount, name, description } = res.data;
@@ -158,27 +161,7 @@ export function OrderTracker({
           {order.paid > 0 && <Row label="Paid" value={order.paid} />}
         </dl>
 
-        {order.status === "BILLED" && due > 0 && (
-          <section className="rounded-xl p-4 text-center ring-2" style={{ borderColor: "var(--theme)", ["--tw-ring-color" as string]: "var(--theme)" }}>
-            <p className="mb-3 text-lg font-bold">Pay {formatINR(due)}</p>
-            {payment.mode === "RAZORPAY" && (
-              <button disabled={pending} onClick={payOnline} className="w-full rounded-lg py-3 font-semibold text-white disabled:opacity-60" style={{ background: "var(--theme)" }}>
-                {pending ? "Opening..." : "Pay online (UPI / Card)"}
-              </button>
-            )}
-            {payment.mode === "UPI_QR" && payment.upiQr && (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={payment.upiQr} alt="UPI QR code" className="mx-auto h-52 w-52" />
-                <a href={payment.upiLink!} className="mt-3 block w-full rounded-lg py-3 font-semibold text-white" style={{ background: "var(--theme)" }}>
-                  Pay with UPI app
-                </a>
-                <p className="mt-2 text-xs text-stone-500">After paying, show the success screen to the staff.</p>
-              </>
-            )}
-            {payment.mode === "NONE" && <p className="text-sm text-stone-600">Please pay at the counter.</p>}
-          </section>
-        )}
+        {order.status === "BILLED" && due > 0 && <SplitPay order={order} mode={payment.mode} upi={payment.upi} pending={pending} onPayOnline={payOnline} />}
 
         {order.status === "PAID" && (
           <div className="rounded-xl bg-green-50 p-4 text-center">
@@ -189,6 +172,7 @@ export function OrderTracker({
             </Link>
           </div>
         )}
+        {order.status === "PAID" && <RateDishes order={order} alreadyRated={ratedItemIds} />}
       </main>
     </div>
   );

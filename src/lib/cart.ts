@@ -13,6 +13,11 @@ export interface MenuItemData {
   spiceLevel: number;
   variants: { id: string; name: string; price: number }[];
   addonGroups: { id: string; name: string; minSelect: number; maxSelect: number; options: { id: string; name: string; price: number }[] }[];
+  // Customer-menu extras (not needed for pricing)
+  media?: { kind: "IMAGE" | "VIDEO"; url: string }[];
+  isKidsFriendly?: boolean;
+  rating?: { average: number; count: number } | null;
+  suggestions?: string[];
 }
 
 export interface CartLine {

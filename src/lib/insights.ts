@@ -21,6 +21,7 @@ export interface InsightInput {
   hours: { hour: number; amount: number }[]; // last 28 days
   discountShare: number; // discounts as % of gross, last 28 days
   cancelledItems: number; // last 28 days
+  ratings?: { name: string; average: number; count: number }[];
 }
 
 const pct = (a: number, b: number) => (b === 0 ? null : Math.round(((a - b) / b) * 1000) / 10);
@@ -106,6 +107,18 @@ export function buildInsights(i: InsightInput): Insight[] {
         .slice(0, 4)
         .map((x) => `${x.name} (${x.foodCostPct}%)`)
         .join(", ")}. Review portion size or price.`,
+    });
+  }
+
+  const disliked = (i.ratings ?? []).filter((r) => r.count >= 5 && r.average < 3.5).sort((a, b) => a.average - b.average);
+  if (disliked.length) {
+    out.push({
+      tone: "bad",
+      title: `Customers rate ${disliked.length} dish${disliked.length > 1 ? "es" : ""} poorly`,
+      detail: `${disliked
+        .slice(0, 4)
+        .map((r) => `${r.name} (${r.average.toFixed(1)}★, ${r.count} ratings)`)
+        .join(", ")}. Read the comments below and talk to the kitchen.`,
     });
   }
 

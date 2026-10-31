@@ -3,6 +3,7 @@
 import { after } from "next/server";
 import { z } from "zod";
 import { notifyBillPaid } from "@/server/whatsapp";
+import { normaliseShare } from "@/lib/split";
 import { decrypt } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { toPaise } from "@/lib/gst";
@@ -81,7 +82,8 @@ export async function requestService(token: string, type: "CALL_WAITER" | "REQUE
 }
 
 /** Creates a Razorpay order for the amount still due on a billed order. */
-export async function startRazorpayPayment(token: string) {
+/** Starts an online payment for the whole amount due, or for one person's share when `sharePaise` is given. */
+export async function startRazorpayPayment(token: string, sharePaise?: number) {
   return run(async () => {
     const order = await orderByToken(token);
     const r = order.restaurant;
@@ -90,15 +92,21 @@ export async function startRazorpayPayment(token: string) {
     const paid = await db.payment.aggregate({ where: { orderId: order.id }, _sum: { amount: true } });
     const due = toPaise(order.grandTotal!) - toPaise(paid._sum.amount ?? 0);
     if (due <= 0) throw new OrderError("Nothing is due");
+    let amount = due;
+    if (sharePaise !== undefined) {
+      const share = normaliseShare(Math.round(sharePaise), due);
+      if ("error" in share) throw new OrderError(share.error);
+      amount = share.amount;
+    }
     const keySecret = decrypt(r.razorpayKeySecretEnc!);
     const rzp = await createRazorpayOrder({
       keyId: r.razorpayKeyId!,
       keySecret,
-      amountPaise: due,
+      amountPaise: amount,
       receipt: order.invoiceNumber ?? order.id,
       notes: { orderId: order.id, restaurantId: r.id },
     });
-    return { keyId: r.razorpayKeyId!, razorpayOrderId: rzp.id, amount: due, name: r.name, description: order.invoiceNumber ?? `Order ${order.orderNumber}` };
+    return { keyId: r.razorpayKeyId!, razorpayOrderId: rzp.id, amount, name: r.name, description: order.invoiceNumber ?? `Order ${order.orderNumber}` };
   });
 }
 
@@ -140,4 +148,27 @@ export async function requestBooking(_: { ok?: boolean; error?: string } | null,
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const res = await run(() => createReservation(restaurant.id, parsed.data, "ONLINE"));
   return res.ok ? { ok: true } : { error: res.error };
+}
+
+const ratingSchema = z
+  .array(z.object({ menuItemId: z.string(), rating: z.number().int().min(1).max(5), comment: z.string().trim().max(300).optional() }))
+  .min(1, "Tap the stars to rate")
+  .max(50);
+
+/** Star ratings for the dishes in a paid order; each dish can be rated once per order, within 7 days. */
+export async function rateDishes(token: string, input: z.input<typeof ratingSchema>) {
+  return run(async () => {
+    const ratings = ratingSchema.parse(input);
+    const order = await db.order.findUnique({ where: { publicToken: token }, include: { items: { where: { status: { not: "CANCELLED" } }, select: { menuItemId: true } } } });
+    if (!order || order.status !== "PAID") throw new OrderError("You can rate dishes after paying the bill");
+    if (order.paidAt && Date.now() - order.paidAt.getTime() > 7 * 86_400_000) throw new OrderError("Ratings close 7 days after the visit");
+    const ordered = new Set(order.items.map((i) => i.menuItemId).filter(Boolean));
+    const valid = ratings.filter((r) => ordered.has(r.menuItemId));
+    if (!valid.length) throw new OrderError("These dishes aren't on this bill");
+    const res = await db.dishRating.createMany({
+      data: valid.map((r) => ({ restaurantId: order.restaurantId, orderId: order.id, menuItemId: r.menuItemId, rating: r.rating, comment: r.comment || null })),
+      skipDuplicates: true,
+    });
+    return { saved: res.count };
+  });
 }

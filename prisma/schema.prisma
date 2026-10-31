@@ -265,6 +265,10 @@ model MenuItem {
   variants        ItemVariant[]
   addonGroups     AddonGroup[]
   recipe          RecipeLine[]
+  media           ItemMedia[]
+  ratings         DishRating[]
+  isKidsFriendly  Boolean         @default(false)
+  pairsWith       String[]        @default([]) // menu item ids suggested with this dish
   stationId       String? // overrides the category's station
   station         KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
 
@@ -806,4 +810,34 @@ model PrintJob {
   printedAt    DateTime?
 
   @@index([printerId, status, createdAt])
+}
+
+// ---------- Menu media, ratings ----------
+
+// Extra photos and one optional video for a dish, shown in the customer menu's detail view.
+model ItemMedia {
+  id         String   @id @default(cuid())
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  kind       String // IMAGE | VIDEO
+  url        String
+  sortOrder  Int      @default(0)
+
+  @@index([menuItemId])
+}
+
+// A customer's 1-5 star rating of a dish from a paid order (one per dish per order).
+model DishRating {
+  id           String   @id @default(cuid())
+  restaurantId String
+  menuItemId   String
+  menuItem     MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  orderId      String
+  rating       Int
+  comment      String?
+  createdAt    DateTime @default(now())
+
+  @@unique([orderId, menuItemId])
+  @@index([restaurantId, createdAt])
+  @@index([menuItemId])
 }

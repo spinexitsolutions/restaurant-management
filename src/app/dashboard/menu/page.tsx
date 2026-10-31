@@ -26,6 +26,10 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
         include: { variants: { orderBy: { sortOrder: "asc" } }, _count: { select: { addonGroups: true } } },
       })
     : [];
+  const ratings = items.length
+    ? await db.dishRating.groupBy({ by: ["menuItemId"], where: { menuItemId: { in: items.map((i) => i.id) } }, _avg: { rating: true }, _count: true })
+    : [];
+  const ratingOf = new Map(ratings.map((r) => [r.menuItemId, r]));
 
   return (
     <div className="max-w-6xl">
@@ -86,6 +90,12 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                       </Link>
                       {item.isBestseller && <Badge tone="brand">Bestseller</Badge>}
                       {!item.isAvailable && <Badge tone="red">Sold out</Badge>}
+                      {item.isKidsFriendly && <Badge>Kids</Badge>}
+                      {ratingOf.get(item.id) && (
+                        <Badge tone={(ratingOf.get(item.id)!._avg.rating ?? 0) >= 4 ? "green" : (ratingOf.get(item.id)!._avg.rating ?? 0) >= 3 ? "amber" : "red"}>
+                          {(ratingOf.get(item.id)!._avg.rating ?? 0).toFixed(1)}★ ({ratingOf.get(item.id)!._count})
+                        </Badge>
+                      )}
                     </div>
                     <p className="mt-1 text-sm text-stone-600">
                       {item.variants.length

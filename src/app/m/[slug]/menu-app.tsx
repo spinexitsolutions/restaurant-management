@@ -10,6 +10,7 @@ import { addToCart, buildCartLine, buildWhatsAppOrderText, lineLabel, setQuantit
 import { calculateBill, formatINR } from "@/lib/gst";
 import { cn } from "@/lib/utils";
 import { placeQrOrder } from "../actions";
+import { ItemDetail, LastOrderBanner, RatingBadge, saveLastOrder, UpsellStrip } from "./menu-extras";
 
 export interface MenuData {
   restaurant: {
@@ -70,6 +71,12 @@ export function MenuApp({ data }: { data: MenuData }) {
   const { restaurant, table } = data;
   const [query, setQuery] = useState("");
   const [vegOnly, setVegOnly] = useState(false);
+  const [kidsOnly, setKidsOnly] = useState(false);
+  const [viewing, setViewing] = useState<MenuItemData | null>(null);
+  const [upsellFor, setUpsellFor] = useState<MenuItemData | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const byId = useMemo(() => new Map(data.categories.flatMap((c) => c.items).map((i) => [i.id, i])), [data.categories]);
+  const hasKids = useMemo(() => data.categories.some((c) => c.items.some((i) => i.isKidsFriendly)), [data.categories]);
   const [activeCat, setActiveCat] = useState(data.categories[0]?.id);
   const [customizing, setCustomizing] = useState<MenuItemData | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
@@ -83,11 +90,14 @@ export function MenuApp({ data }: { data: MenuData }) {
       .map((c) => ({
         ...c,
         items: c.items.filter(
-          (i) => (!vegOnly || i.foodType === "VEG") && (!q || i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q)),
+          (i) =>
+            (!vegOnly || i.foodType === "VEG") &&
+            (!kidsOnly || i.isKidsFriendly) &&
+            (!q || i.name.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q)),
         ),
       }))
       .filter((c) => c.items.length > 0);
-  }, [data.categories, query, vegOnly]);
+  }, [data.categories, query, vegOnly, kidsOnly]);
 
   const qtyByItem = useMemo(() => {
     const m = new Map<string, number>();
@@ -117,10 +127,24 @@ export function MenuApp({ data }: { data: MenuData }) {
     return () => observer.disconnect();
   }, [categories]);
 
-  function quickAdd(item: MenuItemData) {
-    if (item.variants.length || item.addonGroups.length) setCustomizing(item);
-    else setCart((c) => addToCart(c, buildCartLine(item, null, [])));
+  function added(item: MenuItemData) {
+    if (item.suggestions?.length) setUpsellFor(item);
   }
+
+  function quickAdd(item: MenuItemData) {
+    setViewing(null);
+    if (item.variants.length || item.addonGroups.length) setCustomizing(item);
+    else {
+      setCart((c) => addToCart(c, buildCartLine(item, null, [])));
+      added(item);
+    }
+  }
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   function decrement(item: MenuItemData) {
     // Remove from the most recently added line for this item.
@@ -176,6 +200,15 @@ export function MenuApp({ data }: { data: MenuData }) {
           >
             <FoodTypeIcon type="VEG" /> Veg
           </button>
+          {hasKids && (
+            <button
+              onClick={() => setKidsOnly((v) => !v)}
+              className={cn("flex h-10 items-center rounded-full border px-3 text-sm", kidsOnly ? "border-sky-600 bg-sky-50 text-sky-800" : "border-stone-200")}
+              aria-pressed={kidsOnly}
+            >
+              Kids
+            </button>
+          )}
         </div>
         <nav className="flex gap-2 overflow-x-auto px-4 py-2 [scrollbar-width:none]">
           {categories.map((c) => (
@@ -191,6 +224,17 @@ export function MenuApp({ data }: { data: MenuData }) {
         </nav>
       </div>
 
+      <div className="pt-3">
+        <LastOrderBanner
+          slug={restaurant.slug}
+          byId={byId}
+          onAddAll={(lines, skipped) => {
+            setCart((c) => lines.reduce(addToCart, c));
+            setToast(`${lines.length} item${lines.length === 1 ? "" : "s"} added${skipped ? `, ${skipped} not available today` : ""}`);
+          }}
+        />
+      </div>
+
       <main className="px-4">
         {categories.length === 0 && <p className="py-16 text-center text-stone-500">No dishes found.</p>}
         {categories.map((c) => (
@@ -198,7 +242,14 @@ export function MenuApp({ data }: { data: MenuData }) {
             <h2 className="mb-2 text-lg font-bold">{c.name}</h2>
             <ul className="divide-y divide-stone-100">
               {c.items.map((item) => (
-                <MenuItemRow key={item.id} item={item} qty={qtyByItem.get(item.id) ?? 0} onAdd={() => quickAdd(item)} onRemove={() => decrement(item)} />
+                <MenuItemRow
+                  key={item.id}
+                  item={item}
+                  qty={qtyByItem.get(item.id) ?? 0}
+                  onAdd={() => quickAdd(item)}
+                  onRemove={() => decrement(item)}
+                  onOpen={() => setViewing(item)}
+                />
               ))}
             </ul>
           </section>
@@ -225,23 +276,36 @@ export function MenuApp({ data }: { data: MenuData }) {
         </div>
       )}
 
+      {upsellFor && !cartOpen && !customizing && !viewing && (
+        <UpsellStrip forItem={upsellFor} byId={byId} cart={cart} onAdd={(i) => quickAdd(i)} onClose={() => setUpsellFor(null)} />
+      )}
+
+      {toast && (
+        <div className="fixed inset-x-0 top-4 z-50 mx-auto w-fit rounded-full bg-stone-900 px-4 py-2 text-sm text-white shadow-lg" role="status">
+          {toast}
+        </div>
+      )}
+
+      {viewing && <ItemDetail item={viewing} byId={byId} onClose={() => setViewing(null)} onAdd={(i) => quickAdd(i)} />}
+
       {customizing && (
         <Customizer
           item={customizing}
           onClose={() => setCustomizing(null)}
           onAdd={(line) => {
             setCart((c) => addToCart(c, line));
+            added(customizing);
             setCustomizing(null);
           }}
         />
       )}
 
-      {cartOpen && <CartSheet data={data} cart={cart} setCart={setCart} bill={bill} onClose={() => setCartOpen(false)} />}
+      {cartOpen && <CartSheet data={data} cart={cart} setCart={setCart} bill={bill} byId={byId} onClose={() => setCartOpen(false)} />}
     </div>
   );
 }
 
-function MenuItemRow({ item, qty, onAdd, onRemove }: { item: MenuItemData; qty: number; onAdd: () => void; onRemove: () => void }) {
+function MenuItemRow({ item, qty, onAdd, onRemove, onOpen }: { item: MenuItemData; qty: number; onAdd: () => void; onRemove: () => void; onOpen: () => void }) {
   const fromPrice = item.variants.length ? Math.min(...item.variants.map((v) => v.price)) : item.price;
   return (
     <li className={cn("flex gap-4 py-4", !item.isAvailable && "opacity-50")}>
@@ -249,8 +313,12 @@ function MenuItemRow({ item, qty, onAdd, onRemove }: { item: MenuItemData; qty: 
         <div className="flex items-center gap-2">
           <FoodTypeIcon type={item.foodType} />
           {item.isBestseller && <span className="text-xs font-semibold text-amber-600">★ Bestseller</span>}
+          {item.isKidsFriendly && <span className="rounded bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-800">Kids</span>}
+          <RatingBadge rating={item.rating} />
         </div>
-        <h3 className="mt-1 font-semibold">{item.name}</h3>
+        <button onClick={onOpen} className="mt-1 text-left font-semibold hover:underline">
+          {item.name}
+        </button>
         <p className="text-sm font-medium">
           {item.variants.length > 1 && <span className="text-stone-500">from </span>}
           {rupees(fromPrice)}
@@ -260,8 +328,13 @@ function MenuItemRow({ item, qty, onAdd, onRemove }: { item: MenuItemData; qty: 
       </div>
       <div className="relative flex w-28 shrink-0 flex-col items-center">
         {item.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.imageUrl} alt="" className="h-24 w-28 rounded-xl object-cover" loading="lazy" />
+          <button onClick={onOpen} aria-label={`More about ${item.name}`} className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={item.imageUrl} alt="" className="h-24 w-28 rounded-xl object-cover" loading="lazy" />
+            {(item.media?.length ?? 0) > 0 && (
+              <span className="absolute top-1 right-1 rounded bg-black/60 px-1 text-[10px] text-white">+{item.media!.length}</span>
+            )}
+          </button>
         ) : (
           <div className="h-10" />
         )}
@@ -301,12 +374,14 @@ function CartSheet({
   cart,
   setCart,
   bill,
+  byId,
   onClose,
 }: {
   data: MenuData;
   cart: CartLine[];
   setCart: React.Dispatch<React.SetStateAction<CartLine[]>>;
   bill: ReturnType<typeof calculateBill>;
+  byId: Map<string, MenuItemData>;
   onClose: () => void;
 }) {
   const { restaurant, table, tableToken } = data;
@@ -330,6 +405,7 @@ function CartSheet({
       totalLabel: `Total: ${formatINR(bill.grandTotal)}${restaurant.gstEnabled ? " (incl. GST)" : ""}`,
       formatPrice: formatINR,
     });
+    saveLastOrder(restaurant.slug, cart);
     window.open(`https://wa.me/91${restaurant.whatsappNumber}?text=${encodeURIComponent(text)}`, "_blank");
   }
 
@@ -350,6 +426,7 @@ function CartSheet({
       try {
         localStorage.setItem(activeOrderKey(restaurant.slug, tableToken), res.data.token);
       } catch {}
+      saveLastOrder(restaurant.slug, cart);
       setCart([]);
       router.push(`/m/${restaurant.slug}/o/${res.data.token}`);
     });
@@ -410,6 +487,8 @@ function CartSheet({
             ))}
           </ul>
 
+          <AlsoLike cart={cart} byId={byId} onAdd={(i) => setCart((c) => addToCart(c, buildCartLine(i, null, [])))} />
+
           <div className="mt-3 space-y-2">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name (optional)" className="h-10 w-full rounded-lg border border-stone-200 px-3 text-sm" />
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Cooking instructions, e.g. less spicy" rows={2} className="w-full rounded-lg border border-stone-200 px-3 py-2 text-sm" />
@@ -443,6 +522,35 @@ function BillRow({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between">
       <dt className="text-stone-600">{label}</dt>
       <dd>{value}</dd>
+    </div>
+  );
+}
+
+/** A few dishes that go with what's in the cart (only ones that need no choices, so they add in one tap). */
+function AlsoLike({ cart, byId, onAdd }: { cart: CartLine[]; byId: Map<string, MenuItemData>; onAdd: (i: MenuItemData) => void }) {
+  const inCart = new Set(cart.map((l) => l.itemId));
+  const picks: MenuItemData[] = [];
+  for (const l of cart)
+    for (const id of byId.get(l.itemId)?.suggestions ?? []) {
+      const i = byId.get(id);
+      if (i && i.isAvailable && !inCart.has(id) && !i.variants.length && !i.addonGroups.length && !picks.includes(i)) picks.push(i);
+    }
+  if (!picks.length) return null;
+  return (
+    <div className="mt-3">
+      <p className="mb-1 text-sm font-semibold">You may also like</p>
+      <ul className="space-y-1">
+        {picks.slice(0, 3).map((i) => (
+          <li key={i.id} className="flex items-center justify-between text-sm">
+            <span className="flex items-center gap-2">
+              <FoodTypeIcon type={i.foodType} /> {i.name} <span className="text-stone-500">{rupees(i.price)}</span>
+            </span>
+            <button onClick={() => onAdd(i)} className="rounded-md px-3 py-1 text-xs font-bold ring-1 ring-stone-200" style={{ color: "var(--theme)" }}>
+              ADD
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

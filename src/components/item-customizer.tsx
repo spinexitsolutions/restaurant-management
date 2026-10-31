@@ -87,10 +87,12 @@ export function Customizer({ item, onClose, onAdd }: { item: MenuItemData; onClo
       )}
       {item.addonGroups.map((g) => (
         <fieldset key={g.id} className="mb-5">
-          <legend className="font-semibold">{g.name}</legend>
+          <legend className="flex w-full items-center justify-between font-semibold">
+            {g.name}
+            <GroupProgress chosen={g.options.filter((o) => addonIds.includes(o.id)).length} min={g.minSelect} max={g.maxSelect} />
+          </legend>
           <p className="mb-2 text-xs text-stone-500">
-            {g.minSelect > 0 ? `Required · ` : "Optional · "}
-            {g.maxSelect === 1 ? "choose 1" : `up to ${g.maxSelect}`}
+            {g.minSelect > 0 ? (g.minSelect === g.maxSelect ? `Choose ${g.minSelect}` : `Choose ${g.minSelect} to ${g.maxSelect}`) : g.maxSelect === 1 ? "Optional · choose 1" : `Optional · up to ${g.maxSelect}`}
           </p>
           {g.options.map((o) => (
             <label key={o.id} className="flex items-center justify-between py-2">
@@ -120,3 +122,15 @@ export function Customizer({ item, onClose, onAdd }: { item: MenuItemData; onClo
   );
 }
 
+
+/** "1/2 chosen" while a required group is incomplete, a tick when it's done. */
+function GroupProgress({ chosen, min, max }: { chosen: number; min: number; max: number }) {
+  if (min === 0) return chosen ? <span className="text-xs font-normal text-stone-500">{chosen} added</span> : null;
+  const done = chosen >= min;
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${done ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+      {done ? "✓ " : ""}
+      {chosen}/{min === max ? min : `${min}+`} chosen
+    </span>
+  );
+}

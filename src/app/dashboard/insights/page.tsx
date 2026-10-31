@@ -60,6 +60,23 @@ export default async function InsightsPage() {
         </div>
       )}
 
+      {data.comments.length > 0 && (
+        <Card className="mb-6">
+          <h2 className="mb-3 font-semibold">What customers said</h2>
+          <ul className="space-y-2 text-sm">
+            {data.comments.map((c, i) => (
+              <li key={i} className="flex gap-3">
+                <span className={cn("shrink-0 rounded px-1.5 text-xs font-semibold text-white", c.rating >= 4 ? "bg-green-700" : c.rating >= 3 ? "bg-amber-500" : "bg-red-600")}>{c.rating}★</span>
+                <span>
+                  <span className="font-medium">{c.menuItem.name}:</span> {c.comment}
+                  <span className="block text-xs text-stone-400">{c.createdAt.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       <Card className="overflow-x-auto p-0">
         <div className="px-5 pt-5 pb-3">
           <h2 className="font-semibold">Stock for tomorrow</h2>
