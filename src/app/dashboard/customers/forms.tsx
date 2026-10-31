@@ -3,7 +3,8 @@
 import { useActionState } from "react";
 import { Field, FormMessage, Input, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { adjustPoints, createCustomer, updateCustomer } from "./actions";
+import { useTransition } from "react";
+import { adjustPoints, createCustomer, markWinbackSent, setMarketingOptOut, updateCustomer } from "./actions";
 
 // Month-day values are shown in a date picker using a fixed leap year (so 29 Feb works).
 const asDate = (mmdd: string | null) => (mmdd ? `2024-${mmdd}` : "");
@@ -64,5 +65,30 @@ export function AdjustPointsForm({ id }: { id: string }) {
         <FormMessage state={state} />
       </div>
     </form>
+  );
+}
+
+export function WinbackSendButton({ id, href }: { id: string; href: string }) {
+  const [pending, start] = useTransition();
+  return (
+    <a
+      href={href}
+      target="_blank"
+      onClick={() => start(() => markWinbackSent(id))}
+      aria-disabled={pending}
+      className="inline-flex items-center rounded-lg bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white"
+    >
+      Send offer
+    </a>
+  );
+}
+
+export function OptOutToggle({ id, optOut }: { id: string; optOut: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={optOut} disabled={pending} onChange={(e) => start(() => setMarketingOptOut(id, e.target.checked))} />
+      Don&apos;t send offers or birthday messages to this customer
+    </label>
   );
 }

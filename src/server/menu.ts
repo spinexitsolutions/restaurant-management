@@ -48,7 +48,7 @@ export async function loadMenu(restaurantId: string, defaultGstRate: number): Pr
     db.dishRating.groupBy({ by: ["menuItemId"], where: { restaurantId }, _avg: { rating: true }, _count: true }),
   ]);
   const suggestions = buildSuggestions(
-    all.map((i) => ({ id: i.id, pairsWith: i.pairsWith, available: i.isAvailable })),
+    all.map((i) => ({ id: i.id, pairsWith: i.pairsWith, available: i.isAvailable && !i.autoSoldOut })),
     together,
   );
   const ratingOf = new Map(ratings.map((r) => [r.menuItemId, { average: Math.round((r._avg.rating ?? 0) * 10) / 10, count: r._count }]));
@@ -66,7 +66,7 @@ export async function loadMenu(restaurantId: string, defaultGstRate: number): Pr
         imageUrl: i.imageUrl,
         foodType: i.foodType,
         gstRate: i.gstRate === null ? defaultGstRate : Number(i.gstRate),
-        isAvailable: i.isAvailable,
+        isAvailable: i.isAvailable && !i.autoSoldOut,
         isBestseller: i.isBestseller,
         spiceLevel: i.spiceLevel,
         variants: i.variants.map((v) => ({ id: v.id, name: v.name, price: toPaise(v.price) })),

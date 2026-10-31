@@ -23,6 +23,7 @@ import {
   reopenBill,
   resolveServiceRequest,
   setDiscount,
+  fireNextCourse,
   redeemPoints,
   setOrderBuyer,
   setOrderCustomer,
@@ -253,4 +254,27 @@ export async function reprintOrder(orderId: string, kind: "KOT" | "BILL") {
     if (!n) throw new OrderError("No printer is set up for this. Add one in Kitchen setup.");
     return { jobs: n };
   });
+}
+
+export async function fireCourse(orderId: string) {
+  const s = await requireRestaurantSession(ORDER_ROLES);
+  return run(() => fireNextCourse(s.restaurantId, orderId));
+}
+
+export async function showUpiQr(orderId: string, amount: number) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  const { createPosQr } = await import("@/server/upi-qr");
+  return run(() => createPosQr(s.restaurantId, orderId, Math.round(amount * 100)));
+}
+
+export async function checkUpiQr(requestId: string) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  const { checkPosQr } = await import("@/server/upi-qr");
+  try {
+    return { ok: true as const, data: await checkPosQr(s.restaurantId, requestId) };
+  } catch (e) {
+    if (e instanceof OrderError) return { ok: false as const, error: e.message };
+    // Network hiccup talking to Razorpay: the next poll will try again.
+    return { ok: false as const, error: "retry" };
+  }
 }

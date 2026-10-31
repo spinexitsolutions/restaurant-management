@@ -14,6 +14,8 @@ export interface FloorOrder {
   total: number;
   itemCount: number;
   readyCount: number;
+  heldCount: number;
+  readyToFire: boolean; // earlier courses served or ready while later ones wait
   pendingApproval: number;
   createdAt: string;
 }
@@ -54,7 +56,9 @@ export async function getFloor(restaurantId: string) {
       channel: o.channel,
       total: billFor(o, restaurant).grandTotal,
       itemCount: live.reduce((s, i) => s + i.quantity, 0),
-      readyCount: live.filter((i) => i.status === "READY").length,
+      readyCount: live.filter((i) => i.status === "READY" && !i.held).length,
+      heldCount: live.filter((i) => i.held).length,
+      readyToFire: live.some((i) => i.held) && live.filter((i) => !i.held).every((i) => i.status === "READY" || i.status === "SERVED"),
       pendingApproval: o.kots.filter((k) => k.status === "PENDING_APPROVAL").length,
       createdAt: o.createdAt.toISOString(),
     };
@@ -71,7 +75,13 @@ export async function getFloor(restaurantId: string) {
     requests: requests.filter((r) => r.tableId === t.id).map((r) => ({ id: r.id, type: r.type, createdAt: r.createdAt.toISOString() })),
   }));
 
+  // Online payments in the last 10 minutes, for the POS soundbox.
+  const recentPayments = await db.payment.findMany({
+    where: { method: "RAZORPAY", createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, order: { restaurantId } },
+    select: { id: true, amount: true },
+  });
   return {
+    recentPayments: recentPayments.map((p) => ({ id: p.id, amount: Math.round(Number(p.amount) * 100), online: true })),
     tables: floorTables,
     others: orders.filter((o) => !o.tableId).map(summarize),
   };

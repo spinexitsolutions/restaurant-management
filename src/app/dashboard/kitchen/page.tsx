@@ -17,17 +17,18 @@ export default async function KitchenPage({ searchParams }: { searchParams: Prom
       restaurantId: session.restaurantId,
       status: "ACCEPTED",
       createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      items: { some: { status: { in: ["NEW", "PREPARING", "READY"] }, ...stationFilter } },
+      items: { some: { status: { in: ["NEW", "PREPARING", "READY"] }, held: false, ...stationFilter } },
       order: { status: { not: "CANCELLED" } },
     },
     orderBy: { createdAt: "asc" },
-    include: { items: { where: stationFilter, orderBy: { createdAt: "asc" } }, order: { select: { type: true, tableName: true, orderNumber: true } } },
+    include: { items: { where: { ...stationFilter, held: false }, orderBy: { createdAt: "asc" } }, order: { select: { type: true, tableName: true, orderNumber: true } } },
   });
 
   const data: KitchenKot[] = kots.map((k) => ({
     id: k.id,
     kotNumber: k.kotNumber,
-    createdAt: k.createdAt.toISOString(),
+    // A fired course starts its own clock.
+    createdAt: new Date(Math.max(k.createdAt.getTime(), ...k.items.map((i) => i.firedAt?.getTime() ?? 0))).toISOString(),
     note: k.note,
     label: k.order.tableName ? `Table ${k.order.tableName}` : `${k.order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${k.order.orderNumber}`,
     items: k.items

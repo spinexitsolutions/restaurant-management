@@ -24,6 +24,8 @@ export interface OrderItemView {
   quantity: number;
   unitPrice: number;
   status: "NEW" | "PREPARING" | "READY" | "SERVED" | "CANCELLED";
+  held: boolean;
+  course: number;
   note: string | null;
   cancelReason: string | null;
 }
@@ -58,7 +60,7 @@ export interface OrderView {
   }[];
   bill: BillSummary;
   paid: number;
-  payments: { method: string; amount: number; reference: string | null; createdAt: string }[];
+  payments: { id: string; method: string; amount: number; reference: string | null; createdAt: string }[];
 }
 
 const orderInclude = {
@@ -136,13 +138,15 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
         quantity: i.quantity,
         unitPrice: toPaise(i.unitPrice),
         status: i.status,
+        held: i.held,
+        course: i.course,
         note: i.note,
         cancelReason: i.cancelReason,
       })),
     })),
     bill: billFor(order, r),
     paid: order.payments.reduce((s, p) => s + toPaise(p.amount), 0),
-    payments: order.payments.map((p) => ({ method: p.method, amount: toPaise(p.amount), reference: p.reference, createdAt: p.createdAt.toISOString() })),
+    payments: order.payments.map((p) => ({ id: p.id, method: p.method, amount: toPaise(p.amount), reference: p.reference, createdAt: p.createdAt.toISOString() })),
   };
 }
 

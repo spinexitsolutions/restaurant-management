@@ -1,6 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
-import { usageFor, type RecipeLineInput } from "@/lib/inventory";
+import { soldOutItems, usageFor, type RecipeLineInput } from "@/lib/inventory";
 
 type Tx = Prisma.TransactionClient;
 
@@ -36,6 +36,7 @@ export async function consumeItems(tx: Tx, restaurantId: string, where: Prisma.O
     await move(tx, restaurantId, usageFor(group, recipes), -1, "SALE", orderId);
   }
   await tx.orderItem.updateMany({ where: { id: { in: items.map((i) => i.id) } }, data: { stockDeducted: true } });
+  await refreshAvailability(tx, restaurantId, [...new Set([...recipes.values()].flat().map((l) => l.ingredientId))]);
 }
 
 /** Puts ingredients back for items cancelled before the kitchen started them. */
@@ -47,10 +48,40 @@ export async function returnItems(tx: Tx, restaurantId: string, itemIds: string[
     await move(tx, restaurantId, usageFor(group, recipes), 1, "SALE_RETURN", orderId);
   }
   await tx.orderItem.updateMany({ where: { id: { in: items.map((i) => i.id) } }, data: { stockDeducted: false } });
+  await refreshAvailability(tx, restaurantId, [...new Set([...recipes.values()].flat().map((l) => l.ingredientId))]);
 }
 
 function groupBy<T>(list: T[], key: (t: T) => string) {
   const m = new Map<string, T[]>();
   for (const x of list) m.set(key(x), [...(m.get(key(x)) ?? []), x]);
   return m;
+}
+
+/**
+ * Re-checks which dishes can still be made after stock changed and flips their automatic
+ * "sold out" flag. Only dishes using `ingredientIds` are checked when given.
+ */
+export async function refreshAvailability(tx: Tx, restaurantId: string, ingredientIds?: string[]) {
+  const r = await tx.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { autoSoldOut: true } });
+  if (!r.autoSoldOut) {
+    const cleared = await tx.menuItem.updateMany({ where: { restaurantId, autoSoldOut: true }, data: { autoSoldOut: false } });
+    if (cleared.count) await tx.restaurant.update({ where: { id: restaurantId }, data: { liveVersion: { increment: 1 } } });
+    return;
+  }
+  const items = await tx.menuItem.findMany({
+    where: { restaurantId, recipe: ingredientIds ? { some: { ingredientId: { in: ingredientIds } } } : { some: {} } },
+    select: { id: true, autoSoldOut: true, variants: { select: { id: true } }, recipe: { select: { ingredientId: true, variantId: true, quantity: true } } },
+  });
+  if (!items.length) return;
+  const used = [...new Set(items.flatMap((i) => i.recipe.map((l) => l.ingredientId)))];
+  const stock = new Map((await tx.ingredient.findMany({ where: { id: { in: used } }, select: { id: true, currentStock: true } })).map((i) => [i.id, Number(i.currentStock)]));
+  const out = soldOutItems(
+    items.map((i) => ({ id: i.id, variantIds: i.variants.map((v) => v.id), recipe: i.recipe.map((l) => ({ ...l, quantity: Number(l.quantity) })) })),
+    stock,
+  );
+  const nowOut = items.filter((i) => out.has(i.id) && !i.autoSoldOut).map((i) => i.id);
+  const backIn = items.filter((i) => !out.has(i.id) && i.autoSoldOut).map((i) => i.id);
+  if (nowOut.length) await tx.menuItem.updateMany({ where: { id: { in: nowOut } }, data: { autoSoldOut: true } });
+  if (backIn.length) await tx.menuItem.updateMany({ where: { id: { in: backIn } }, data: { autoSoldOut: false } });
+  if (nowOut.length || backIn.length) await tx.restaurant.update({ where: { id: restaurantId }, data: { liveVersion: { increment: 1 } } });
 }

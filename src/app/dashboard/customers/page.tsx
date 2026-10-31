@@ -8,7 +8,9 @@ import { formatINR, toPaise } from "@/lib/gst";
 import { istDate } from "@/lib/numbering";
 import { Card, PageHeader } from "@/components/ui";
 import { BILLING_ROLES } from "@/server/orders";
-import { CustomerForm } from "./forms";
+import { CustomerForm, WinbackSendButton } from "./forms";
+import { winbackReturned } from "@/lib/winback";
+import { winbackCandidates } from "@/server/whatsapp";
 
 export const metadata = { title: "Customers" };
 
@@ -20,13 +22,24 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     ...(q ? { OR: [{ phone: { contains: q } }, { name: { contains: q, mode: "insensitive" } }] } : {}),
   };
   const [restaurant, customers, total, withDates] = await Promise.all([
-    db.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { name: true, birthdayOfferText: true, loyaltyEnabled: true } }),
+    db.restaurant.findUniqueOrThrow({
+      where: { id: restaurantId },
+      select: { id: true, name: true, birthdayOfferText: true, loyaltyEnabled: true, winbackEnabled: true, winbackDays: true, winbackOffer: true, waWinbackTemplate: true, waPhoneNumberId: true },
+    }),
     db.customer.findMany({ where, orderBy: [{ lastVisitAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }], take: 200 }),
     db.customer.count({ where: { restaurantId } }),
     db.customer.findMany({ where: { restaurantId, OR: [{ birthday: { not: null } }, { anniversary: { not: null } }] }, select: { id: true, name: true, phone: true, birthday: true, anniversary: true } }),
   ]);
 
   const today = istDate();
+  const [lapsed, campaign] = await Promise.all([
+    winbackCandidates(restaurant, new Date(), 30),
+    db.customer.findMany({ where: { restaurantId, lastWinbackAt: { gte: new Date(Date.now() - 90 * 86_400_000) } }, select: { lastVisitAt: true, lastWinbackAt: true } }),
+  ]);
+  const winback = winbackReturned(campaign);
+  const automatic = restaurant.winbackEnabled && !!restaurant.waWinbackTemplate && !!restaurant.waPhoneNumberId;
+  const winbackText = (name: string | null) =>
+    `Hi ${name || "there"}, we miss you at ${restaurant.name}! Come back this week and enjoy ${restaurant.winbackOffer}. See you soon 🙏`;
   const upcoming = withDates
     .flatMap((c) =>
       (
@@ -77,6 +90,41 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
           </ul>
         </Card>
       )}
+
+      <Card className="mb-6">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-semibold">We miss you ({restaurant.winbackDays}+ days away)</h2>
+          <p className="text-sm text-stone-500">
+            Last 90 days: {winback.sent} messaged · <span className="font-semibold text-green-700">{winback.returned} came back</span>
+            {winback.sent > 0 && ` (${Math.round((winback.returned / winback.sent) * 100)}%)`}
+          </p>
+        </div>
+        <p className="mb-3 text-sm text-stone-500">
+          {automatic
+            ? `Sent automatically every morning on WhatsApp with “${restaurant.winbackOffer}”.`
+            : "Turn on automatic messages in Settings → Customers, or send them yourself below."}
+        </p>
+        {lapsed.length === 0 ? (
+          <p className="text-sm text-stone-400">No one to message right now.</p>
+        ) : (
+          <ul className="divide-y divide-stone-100">
+            {lapsed.map((c) => (
+              <li key={c.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                <span className="flex-1">
+                  <Link href={`/dashboard/customers/${c.id}`} className="font-medium hover:underline">
+                    {c.name || c.phone}
+                  </Link>
+                  <span className="text-stone-500">
+                    {" "}
+                    · {c.visits} visit{c.visits === 1 ? "" : "s"} · last {c.lastVisitAt!.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" })}
+                  </span>
+                </span>
+                {!automatic && <WinbackSendButton id={c.id} href={`https://wa.me/91${c.phone}?text=${encodeURIComponent(winbackText(c.name))}`} />}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card className="mb-6">
         <h2 className="mb-3 font-semibold">Add customer</h2>

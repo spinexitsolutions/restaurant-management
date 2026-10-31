@@ -6,6 +6,7 @@ import { toPaise } from "@/lib/gst";
 import { formatInvoiceNumber, financialYear, istDate } from "@/lib/numbering";
 import { orderBill, paiseToRupees } from "@/lib/order-bill";
 import { subscriptionStatus } from "@/lib/plans";
+import { COURSES, holdPlan, nextCourse } from "@/lib/courses";
 import { onBilled, onPaid, refundPoints } from "./customers";
 import { consumeItems, returnItems } from "./inventory";
 import { enqueueBill, enqueueKot } from "./printing";
@@ -63,14 +64,14 @@ async function resolveLines(tx: Tx, restaurantId: string, defaultGstRate: number
   if (inputs.length > 50) throw new OrderError("Too many items in one order");
   const items = await tx.menuItem.findMany({
     where: { restaurantId, id: { in: [...new Set(inputs.map((i) => i.itemId))] } },
-    include: { category: { select: { isActive: true, stationId: true } }, variants: true, addonGroups: { include: { options: true } } },
+    include: { category: { select: { isActive: true, stationId: true, course: true } }, variants: true, addonGroups: { include: { options: true } } },
   });
   const byId = new Map(items.map((i) => [i.id, i]));
 
   return inputs.map((input) => {
     const item = byId.get(input.itemId);
     if (!item || !item.category.isActive) throw new OrderError("An item in your order is no longer on the menu");
-    if (!item.isAvailable) throw new OrderError(`${item.name} is sold out`);
+    if (!item.isAvailable || item.autoSoldOut) throw new OrderError(`${item.name} is sold out`);
     if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 99) throw new OrderError("Invalid quantity");
     if (item.variants.length > 0 && !item.variants.some((v) => v.id === input.variantId)) {
       throw new OrderError(`Choose a size for ${item.name}`);
@@ -104,6 +105,7 @@ async function resolveLines(tx: Tx, restaurantId: string, defaultGstRate: number
       variantId: line.variantId,
       // Dish's own station, else its category's station, else the main kitchen.
       stationId: item.stationId ?? item.category.stationId ?? null,
+      course: item.category.course,
       name: item.name,
       variantName: line.variantName,
       addons: line.addons.map((a) => ({ name: a.name, price: Number(paiseToRupees(a.price)) })),
@@ -203,7 +205,13 @@ export async function placeItems(input: PlaceItemsInput) {
         status: input.kotStatus,
         note: input.note?.trim().slice(0, 200) || null,
         createdById: input.createdById,
-        items: { create: items.map((i) => ({ ...i, orderId: order!.id })) },
+        // With course firing on, later courses in a mixed ticket wait for the waiter to fire them.
+        items: {
+          create: (() => {
+            const hold = restaurant.courseFiring ? holdPlan(items.map((i) => i.course)) : items.map(() => false);
+            return items.map((i, n) => ({ ...i, orderId: order!.id, held: hold[n] }));
+          })(),
+        },
       },
     });
     if (input.kotStatus === "ACCEPTED") {
@@ -298,6 +306,7 @@ export async function generateBill(restaurantId: string, orderId: string) {
     if (!order) throw new OrderError("Order not found");
     if (order.status !== "OPEN") throw new OrderError("This order is already billed");
     if (order.kots.some((k) => k.status === "PENDING_APPROVAL")) throw new OrderError("Accept or reject the pending customer order first");
+    if (order.items.some((i) => i.held && i.status !== "CANCELLED")) throw new OrderError("Some courses are still on hold. Fire or cancel them before billing.");
     const billable = order.items.filter((i) => i.kot.status === "ACCEPTED");
     if (!billable.some((i) => i.status !== "CANCELLED")) throw new OrderError("There are no items to bill");
 
@@ -633,5 +642,23 @@ export async function setOrderBuyer(restaurantId: string, orderId: string, buyer
       }
     }
     await bumpLive(tx, restaurantId);
+  });
+}
+
+/** Sends the next held course of an order to the kitchen (screen and printer). */
+export async function fireNextCourse(restaurantId: string, orderId: string) {
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, restaurantId } });
+    if (!order) throw new OrderError("Order not found");
+    const held = await tx.orderItem.findMany({ where: { orderId, held: true, status: { not: "CANCELLED" }, kot: { status: "ACCEPTED" } } });
+    const course = nextCourse(held.map((i) => i.course));
+    if (course === null) throw new OrderError("Nothing is on hold");
+    const firing = held.filter((i) => i.course === course);
+    await tx.orderItem.updateMany({ where: { id: { in: firing.map((i) => i.id) } }, data: { held: false, firedAt: new Date() } });
+    for (const kotId of new Set(firing.map((i) => i.kotId))) {
+      await enqueueKot(tx, restaurantId, kotId, { onlyItemIds: firing.filter((i) => i.kotId === kotId).map((i) => i.id), heading: `FIRE ${COURSES[course].toUpperCase()}` });
+    }
+    await bumpLive(tx, restaurantId);
+    return { course: COURSES[course], count: firing.length };
   });
 }

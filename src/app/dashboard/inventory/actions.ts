@@ -5,6 +5,7 @@ import { z } from "zod";
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { round3, UNITS, weightedAverageCost } from "@/lib/inventory";
+import { refreshAvailability } from "@/server/inventory";
 
 export type FormState = { error?: string; ok?: string } | null;
 
@@ -95,6 +96,7 @@ export async function stockEntry(input: z.input<typeof entrySchema>): Promise<Fo
       await tx.ingredient.update({ where: { id: ing.id }, data: { currentStock: d.quantity } });
       if (diff !== 0) await tx.stockMovement.create({ data: { ...base, type: "ADJUSTMENT", quantity: diff, unitCost: ing.costPerUnit, note: d.note || "Stock count" } });
     }
+    await refreshAvailability(tx, s.restaurantId, [ing.id]);
     revalidatePath("/dashboard/inventory");
     return { ok: "Stock updated" };
   });
@@ -126,10 +128,22 @@ export async function saveRecipe(input: z.input<typeof recipeSchema>): Promise<F
     if (seen.has(key)) return { error: "An ingredient is listed twice for the same size" };
     seen.add(key);
   }
-  await db.$transaction([
-    db.recipeLine.deleteMany({ where: { menuItemId } }),
-    db.recipeLine.createMany({ data: lines.map((l) => ({ menuItemId, ingredientId: l.ingredientId, variantId: l.variantId, quantity: l.quantity })) }),
-  ]);
+  await db.$transaction(async (tx) => {
+    await tx.recipeLine.deleteMany({ where: { menuItemId } });
+    await tx.recipeLine.createMany({ data: lines.map((l) => ({ menuItemId, ingredientId: l.ingredientId, variantId: l.variantId, quantity: l.quantity })) });
+    // A dish whose recipe was removed can't stay auto sold out.
+    if (!lines.length) await tx.menuItem.update({ where: { id: menuItemId }, data: { autoSoldOut: false } });
+    else await refreshAvailability(tx, s.restaurantId, lines.map((l) => l.ingredientId));
+  });
   revalidatePath("/dashboard/inventory");
   return { ok: "Recipe saved" };
+}
+
+export async function setAutoSoldOut(on: boolean) {
+  const s = await requireRestaurantSession(MANAGE_ROLES);
+  await db.$transaction(async (tx) => {
+    await tx.restaurant.update({ where: { id: s.restaurantId }, data: { autoSoldOut: on } });
+    await refreshAvailability(tx, s.restaurantId);
+  });
+  revalidatePath("/dashboard", "layout");
 }

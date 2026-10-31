@@ -51,3 +51,21 @@ export function round3(n: number) {
 }
 
 export const UNITS = ["kg", "g", "l", "ml", "pcs"] as const;
+
+/**
+ * Dishes that can't be made right now: every way of ordering them (each size, or the dish itself)
+ * needs some ingredient that has less in stock than one portion uses. Dishes without a recipe are never auto sold out.
+ */
+export function soldOutItems(
+  items: { id: string; variantIds: string[]; recipe: RecipeLineInput[] }[],
+  stock: Map<string, number>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const item of items) {
+    if (!item.recipe.length) continue;
+    const portions = item.variantIds.length ? item.variantIds.map((v) => recipeFor(item.recipe, v)) : [recipeFor(item.recipe, null)];
+    const canMake = portions.some((lines) => lines.length > 0 && lines.every((l) => (stock.get(l.ingredientId) ?? 0) >= l.quantity));
+    if (!canMake) out.add(item.id);
+  }
+  return out;
+}

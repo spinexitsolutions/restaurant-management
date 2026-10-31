@@ -86,3 +86,16 @@ export async function adjustPoints(_: FormState, formData: FormData): Promise<Fo
   revalidatePath(`/dashboard/customers/${id}`);
   return { ok: "Points updated" };
 }
+
+/** Records that a "we miss you" message was sent by hand from the Customers page. */
+export async function markWinbackSent(customerId: string) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  await db.customer.updateMany({ where: { id: customerId, restaurantId: s.restaurantId }, data: { lastWinbackAt: new Date() } });
+  revalidatePath("/dashboard/customers");
+}
+
+export async function setMarketingOptOut(customerId: string, optOut: boolean) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  await db.customer.updateMany({ where: { id: customerId, restaurantId: s.restaurantId }, data: { marketingOptOut: optOut } });
+  revalidatePath(`/dashboard/customers/${customerId}`);
+}

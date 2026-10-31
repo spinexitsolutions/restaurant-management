@@ -21,17 +21,29 @@ function orderLabel(o: { tableName: string | null; channel: string | null; chann
  * Queues kitchen tickets for a KOT. Each active KOT printer gets the items for its station
  * (or every item if it has no station), so the tandoor printer only prints tandoor items.
  */
-export async function enqueueKot(tx: Tx, restaurantId: string, kotId: string, opts: { cancelled?: { name: string; variantName: string | null; quantity: number; stationId: string | null; reason: string } } = {}) {
+export async function enqueueKot(
+  tx: Tx,
+  restaurantId: string,
+  kotId: string,
+  opts: {
+    cancelled?: { name: string; variantName: string | null; quantity: number; stationId: string | null; reason: string };
+    onlyItemIds?: string[]; // print just these (a fired course)
+    heading?: string;
+  } = {},
+) {
   const printers = await tx.printer.findMany({ where: { restaurantId, isActive: true, printKot: true }, include: { station: { select: { name: true } } } });
   if (!printers.length) return;
   const kot = await tx.kot.findUniqueOrThrow({ where: { id: kotId }, include: { order: true, items: { orderBy: { createdAt: "asc" } } } });
-  const items = opts.cancelled ? [opts.cancelled] : kot.items.filter((i) => i.status !== "CANCELLED");
+  // Held courses don't print until they are fired.
+  const items = opts.cancelled
+    ? [opts.cancelled]
+    : kot.items.filter((i) => i.status !== "CANCELLED" && (opts.onlyItemIds ? opts.onlyItemIds.includes(i.id) : !i.held));
 
   for (const p of printers) {
     const mine = items.filter((i) => !p.stationId || i.stationId === p.stationId);
     if (!mine.length) continue;
     const lines: ReceiptLine[] = [
-      { t: "text", text: opts.cancelled ? "*** CANCELLED ***" : `KOT ${kot.kotNumber}`, align: "center", big: true, bold: true },
+      { t: "text", text: opts.cancelled ? "*** CANCELLED ***" : opts.heading ?? `KOT ${kot.kotNumber}`, align: "center", big: true, bold: true },
       { t: "text", text: orderLabel(kot.order), align: "center", big: true },
       { t: "text", text: `${p.station?.name ?? "Kitchen"} · ${time(new Date())} · Order #${kot.order.orderNumber}`, align: "center" },
       { t: "rule" },

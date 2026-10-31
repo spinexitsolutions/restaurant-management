@@ -9,6 +9,8 @@ import { Badge, Button, FoodTypeIcon, Input, Select } from "@/components/ui";
 import { MenuPicker, type PickerCategory } from "@/components/menu-picker";
 import { PinDialog } from "@/components/pin-dialog";
 import { enqueue, newRequestId } from "@/lib/outbox";
+import { COURSES, nextCourse } from "@/lib/courses";
+import { useSoundbox } from "@/hooks/use-soundbox";
 import { addToCart, lineLabel, setQuantity, type CartLine } from "@/lib/cart";
 import { formatINR } from "@/lib/gst";
 import { buildUpiLink } from "@/lib/payments";
@@ -19,13 +21,16 @@ import {
   acceptKot,
   applyDiscount,
   applyPoints,
+  fireCourse,
   billOrder,
   cancelOrderItem,
   cancelWholeOrder,
   markServed,
   mergeInto,
+  checkUpiQr,
   rejectKot,
   reopenOrder,
+  showUpiQr,
   reprintOrder,
   sendKot,
   setBuyer,
@@ -37,6 +42,7 @@ import {
 } from "../actions";
 
 export interface WorkspaceRestaurant {
+  razorpay: boolean; // dynamic UPI QR that confirms itself
   loyalty: { enabled: boolean; pointValue: number; minRedeem: number };
   name: string;
   upiId: string | null;
@@ -217,6 +223,7 @@ export function OrderWorkspace(props: {
 
         <aside className={cn("flex min-h-0 w-full flex-col border-l border-stone-200 bg-white lg:w-[420px]", editable && tab === "menu" && "hidden lg:flex", !editable && "lg:mx-auto lg:border-r")}>
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
+            {order && <FireBar order={order} pending={pending} onAct={act} />}
             {order?.kots.map((kot) => (
               <KotBlock key={kot.id} kot={kot} editable={editable} onAct={act} />
             ))}
@@ -310,7 +317,11 @@ function KotBlock({
               {item.addons.length > 0 && <p className="text-xs text-stone-500">+ {item.addons.join(", ")}</p>}
               {item.cancelReason && <p className="text-xs text-red-600 no-underline">{item.cancelReason}</p>}
             </div>
-            {!pendingApproval && kot.status === "ACCEPTED" && <Badge tone={ITEM_STATUS[item.status].tone}>{ITEM_STATUS[item.status].label}</Badge>}
+            {!pendingApproval && kot.status === "ACCEPTED" && item.held && item.status !== "CANCELLED" ? (
+              <Badge className="bg-purple-100 text-purple-800">On hold · {COURSES[item.course]}</Badge>
+            ) : (
+              !pendingApproval && kot.status === "ACCEPTED" && <Badge tone={ITEM_STATUS[item.status].tone}>{ITEM_STATUS[item.status].label}</Badge>
+            )}
             <span className="w-16 text-right">{formatINR(item.unitPrice * item.quantity)}</span>
             {editable && kot.status === "ACCEPTED" && item.status !== "CANCELLED" && item.status !== "SERVED" && (
               <button
@@ -405,6 +416,7 @@ function BillingPanel({
   const [upiQr, setUpiQr] = useState<string | null>(null);
 
   useEffect(() => setAmount((due / 100).toFixed(2)), [due]);
+  useSoundbox(order.payments.map((p) => ({ id: p.id, amount: p.amount, online: p.method === "RAZORPAY" })));
   useEffect(() => {
     if (order.status !== "BILLED" || method !== "UPI" || !restaurant.upiId) return setUpiQr(null);
     const link = buildUpiLink({
@@ -532,7 +544,8 @@ function BillingPanel({
             )}
           </div>
           {change > 0 && <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Return change: {formatINR(change)}</p>}
-          {upiQr && (
+          {method === "UPI" && restaurant.razorpay && <AutoUpiQr orderId={order.id} amount={Number(amount)} />}
+          {upiQr && !restaurant.razorpay && (
             <div className="text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={upiQr} alt="UPI QR" className="mx-auto h-44 w-44" />
@@ -780,6 +793,79 @@ function BuyerBox({ order, pending, onAct }: { order: OrderView; pending: boolea
           Cancel
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** "Fire Mains (3)" while later courses are on hold. */
+function FireBar({ order, pending, onAct }: { order: OrderView; pending: boolean; onAct: Act }) {
+  const held = order.kots
+    .filter((k) => k.status === "ACCEPTED")
+    .flatMap((k) => k.items)
+    .filter((i) => i.held && i.status !== "CANCELLED");
+  const course = nextCourse(held.map((i) => i.course));
+  if (course === null) return null;
+  const count = held.filter((i) => i.course === course).reduce((s, i) => s + i.quantity, 0);
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-purple-50 px-3 py-2 ring-1 ring-purple-200">
+      <span className="text-sm text-purple-900">
+        {count} {COURSES[course].toLowerCase()} item{count === 1 ? "" : "s"} waiting
+      </span>
+      <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={pending} onClick={() => onAct(() => fireCourse(order.id))}>
+        🔥 Fire {COURSES[course]}
+      </Button>
+    </div>
+  );
+}
+
+/** Razorpay dynamic QR for the amount: the screen waits and confirms by itself when the customer pays. */
+function AutoUpiQr({ orderId, amount }: { orderId: string; amount: number }) {
+  const [qr, setQr] = useState<{ requestId: string; imageUrl: string; amount: number } | null>(null);
+  const [status, setStatus] = useState<"idle" | "waiting" | "paid">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    if (!qr || status !== "waiting") return;
+    const id = setInterval(async () => {
+      const res = await checkUpiQr(qr.requestId);
+      if (res.ok && res.data.paid) setStatus("paid");
+    }, 4000);
+    return () => clearInterval(id);
+  }, [qr, status]);
+
+  if (status === "paid" && qr) return <p className="rounded-lg bg-green-50 px-3 py-3 text-center font-semibold text-green-800">✓ {formatINR(qr.amount)} received on UPI</p>;
+  if (qr && status === "waiting")
+    return (
+      <div className="text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={qr.imageUrl} alt={`UPI QR for ${formatINR(qr.amount)}`} className="mx-auto h-56 w-56 object-contain" />
+        <p className="text-sm font-medium">Scan to pay {formatINR(qr.amount)}</p>
+        <p className="mt-1 animate-pulse text-xs text-stone-500">Waiting for payment… it will confirm by itself</p>
+        <button className="mt-2 text-xs text-stone-500 underline" onClick={() => (setQr(null), setStatus("idle"))}>
+          Cancel QR
+        </button>
+      </div>
+    );
+  return (
+    <div className="space-y-1">
+      <Button
+        className="w-full"
+        variant="secondary"
+        disabled={pending || !(amount > 0)}
+        onClick={() =>
+          start(async () => {
+            setError(null);
+            const res = await showUpiQr(orderId, amount);
+            if (!res.ok) return setError(res.error);
+            setQr(res.data!);
+            setStatus("waiting");
+          })
+        }
+      >
+        Show UPI QR for {formatINR(Math.round(amount * 100) || 0)} (confirms automatically)
+      </Button>
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }

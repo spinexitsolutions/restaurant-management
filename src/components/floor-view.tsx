@@ -36,7 +36,8 @@ export function FloorAlerts({ tables }: { tables: FloorTable[] }) {
   const requests = tables.flatMap((t) => t.requests.map((r) => ({ ...r, table: t.name })));
   const approvals = tables.filter((t) => t.order?.pendingApproval);
   const ready = tables.filter((t) => t.order?.readyCount);
-  if (!requests.length && !approvals.length && !ready.length) return null;
+  const fire = tables.filter((t) => t.order?.readyToFire);
+  if (!requests.length && !approvals.length && !ready.length && !fire.length) return null;
 
   return (
     <div className="mb-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -48,6 +49,11 @@ export function FloorAlerts({ tables }: { tables: FloorTable[] }) {
       {ready.map((t) => (
         <Link key={`r${t.id}`} href={`/dashboard/orders/${t.order!.id}`} className="flex items-center gap-3 rounded-lg bg-green-100 px-4 py-3 text-sm font-medium text-green-900">
           🍽️ Table {t.name}: {t.order!.readyCount} item(s) ready to serve
+        </Link>
+      ))}
+      {fire.map((t) => (
+        <Link key={`f${t.id}`} href={`/dashboard/orders/${t.order!.id}`} className="flex items-center gap-3 rounded-lg bg-purple-100 px-4 py-3 text-sm font-medium text-purple-900">
+          🔥 Table {t.name}: earlier course done, fire the next one ({t.order!.heldCount} item{t.order!.heldCount === 1 ? "" : "s"} on hold)
         </Link>
       ))}
       {requests.map((r) => {

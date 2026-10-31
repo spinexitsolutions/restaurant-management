@@ -8,8 +8,22 @@ import { istDate } from "@/lib/numbering";
 import { appUrl } from "@/lib/utils";
 import { GRAPH_VERSION, templatePayload, toWaNumber } from "@/lib/whatsapp";
 import { startOfIstDay } from "./stats";
+import { winbackDue } from "@/lib/winback";
 
-type Kind = "BILL" | "BOOKING" | "BIRTHDAY" | "ANNIVERSARY" | "SUMMARY" | "TEST";
+type Kind = "BILL" | "BOOKING" | "BIRTHDAY" | "ANNIVERSARY" | "SUMMARY" | "WINBACK" | "TEST";
+
+const WINBACK_DAILY_LIMIT = 200;
+
+/** Customers due a "we miss you" message, oldest absence first. */
+export async function winbackCandidates(r: Pick<Restaurant, "id" | "winbackDays">, now: Date, limit: number) {
+  const cutoff = new Date(now.getTime() - r.winbackDays * 86_400_000);
+  const rows = await db.customer.findMany({
+    where: { restaurantId: r.id, marketingOptOut: false, visits: { gte: 1 }, lastVisitAt: { lte: cutoff } },
+    orderBy: { lastVisitAt: "asc" },
+    take: limit * 5,
+  });
+  return rows.filter((c) => winbackDue(c, now, r.winbackDays)).slice(0, limit);
+}
 
 export function waConfigured(r: Pick<Restaurant, "waPhoneNumberId" | "waAccessTokenEnc">) {
   return !!(r.waPhoneNumberId && r.waAccessTokenEnc);
@@ -74,7 +88,7 @@ export async function notifyBooking(reservationId: string) {
 export async function runDailyJobs(now: Date = new Date()) {
   const today = istDate(now);
   const year = Number(today.slice(0, 4));
-  const stats = { wishes: 0, summaries: 0, shiftsClosed: 0 };
+  const stats = { wishes: 0, summaries: 0, shiftsClosed: 0, winbacks: 0 };
 
   const stale = await db.attendance.updateMany({
     where: { clockOut: null, clockIn: { lt: new Date(now.getTime() - 16 * 3_600_000) } },
@@ -86,7 +100,7 @@ export async function runDailyJobs(now: Date = new Date()) {
   for (const r of restaurants) {
     if (r.waBirthdayTemplate) {
       const customers = await db.customer.findMany({
-        where: { restaurantId: r.id, OR: [{ birthday: today.slice(5) }, { anniversary: today.slice(5) }] },
+        where: { restaurantId: r.id, marketingOptOut: false, OR: [{ birthday: today.slice(5) }, { anniversary: today.slice(5) }] },
       });
       for (const c of customers) {
         if (c.birthday && daysUntil(c.birthday, today) === 0 && c.lastBirthdayWish !== year) {
@@ -102,6 +116,15 @@ export async function runDailyJobs(now: Date = new Date()) {
             await db.customer.update({ where: { id: c.id }, data: { lastAnniversaryWish: year } });
             stats.wishes++;
           }
+        }
+      }
+    }
+    if (r.winbackEnabled && r.waWinbackTemplate) {
+      for (const c of await winbackCandidates(r, now, WINBACK_DAILY_LIMIT)) {
+        const res = await sendTemplate(r, "WINBACK", c.phone, r.waWinbackTemplate, [c.name || "there", r.name, r.winbackOffer]);
+        if (res.ok) {
+          await db.customer.update({ where: { id: c.id }, data: { lastWinbackAt: now } });
+          stats.winbacks++;
         }
       }
     }

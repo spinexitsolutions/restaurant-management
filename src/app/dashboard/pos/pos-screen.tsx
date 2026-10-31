@@ -7,6 +7,7 @@ import { FloorAlerts, OtherOrders, SoundToggle, TableGrid } from "@/components/f
 import { Card } from "@/components/ui";
 import { formatINR } from "@/lib/gst";
 import { beep, useLiveRefresh } from "@/hooks/use-live";
+import { useSoundbox } from "@/hooks/use-soundbox";
 import type { FloorOrder, FloorTable } from "@/server/floor";
 
 export function PosScreen({
@@ -14,13 +15,16 @@ export function PosScreen({
   others,
   stats,
   title,
+  recentPayments,
 }: {
   tables: FloorTable[];
   others: FloorOrder[];
   stats: { sales: number; orders: number; running: number } | null;
   title: string;
+  recentPayments?: { id: string; amount: number; online: boolean }[];
 }) {
   const [sound, setSound] = useState(false);
+  useSoundbox(recentPayments ?? [], sound);
   useLiveRefresh({ onChange: () => sound && beep() });
 
   return (

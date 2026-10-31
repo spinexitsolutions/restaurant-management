@@ -3,7 +3,7 @@ import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatINR } from "@/lib/gst";
 import { Card, PageHeader } from "@/components/ui";
-import { AddIngredientForm, IngredientRow } from "./stock-controls";
+import { AddIngredientForm, AutoSoldOutToggle, IngredientRow } from "./stock-controls";
 import { formatQty, InventoryTabs } from "./tabs";
 
 export const metadata = { title: "Inventory" };
@@ -11,7 +11,7 @@ export const metadata = { title: "Inventory" };
 export default async function InventoryPage() {
   const { restaurantId } = await requireRestaurantSession(MANAGE_ROLES);
   const [restaurant, ingredients] = await Promise.all([
-    db.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { name: true, whatsappNumber: true, phone: true } }),
+    db.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { name: true, whatsappNumber: true, phone: true, autoSoldOut: true } }),
     db.ingredient.findMany({ where: { restaurantId }, orderBy: [{ isActive: "desc" }, { name: "asc" }] }),
   ]);
   const rows = ingredients.map((i) => ({
@@ -24,6 +24,7 @@ export default async function InventoryPage() {
     isActive: i.isActive,
   }));
   const low = rows.filter((r) => r.isActive && r.stock <= r.low);
+  const autoOut = await db.menuItem.findMany({ where: { restaurantId, autoSoldOut: true }, select: { name: true }, orderBy: { name: "asc" } });
   const value = rows.reduce((s, r) => s + Math.max(0, r.stock) * r.cost, 0);
   const owner = restaurant.whatsappNumber || restaurant.phone;
   const lowText = [`*${restaurant.name}: low stock*`, ...low.map((r) => `• ${r.name}: ${formatQty(r.stock, r.unit)} (min ${formatQty(r.low, r.unit)})`)].join("\n");
@@ -62,6 +63,19 @@ export default async function InventoryPage() {
           )}
         </div>
       )}
+
+      <Card className="mb-6 space-y-2">
+        <AutoSoldOutToggle on={restaurant.autoSoldOut} />
+        <p className="text-xs text-stone-500">
+          A dish turns &ldquo;Sold out&rdquo; on the QR menu and POS when its recipe can&apos;t be made from what&apos;s in stock, and comes back as soon as you enter a
+          purchase or stock count. Turn this off if you don&apos;t record purchases regularly.
+        </p>
+        {autoOut.length > 0 && (
+          <p className="text-sm text-red-700">
+            Sold out right now: <strong>{autoOut.map((i) => i.name).join(", ")}</strong>
+          </p>
+        )}
+      </Card>
 
       <Card className="mb-6">
         <h2 className="mb-3 font-semibold">Add ingredient</h2>

@@ -90,6 +90,11 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                       </Link>
                       {item.isBestseller && <Badge tone="brand">Bestseller</Badge>}
                       {!item.isAvailable && <Badge tone="red">Sold out</Badge>}
+                      {item.autoSoldOut && item.isAvailable && (
+                        <Link href="/dashboard/inventory">
+                          <Badge tone="red">Out of stock</Badge>
+                        </Link>
+                      )}
                       {item.isKidsFriendly && <Badge>Kids</Badge>}
                       {ratingOf.get(item.id) && (
                         <Badge tone={(ratingOf.get(item.id)!._avg.rating ?? 0) >= 4 ? "green" : (ratingOf.get(item.id)!._avg.rating ?? 0) >= 3 ? "amber" : "red"}>

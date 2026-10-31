@@ -4,7 +4,8 @@ import { useActionState, useState, useTransition } from "react";
 import { X } from "lucide-react";
 import { Button, Field, FormMessage, Input, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
-import { addPrinter, addStation, deletePrinter, deleteStation, setCategoryStation, testPrinter } from "./actions";
+import { addPrinter, addStation, deletePrinter, deleteStation, setCategoryCourse, setCategoryStation, setCourseFiring, testPrinter } from "./actions";
+import { COURSES } from "@/lib/courses";
 
 export function AddStationForm() {
   const [state, action] = useActionState(addStation, null);
@@ -118,5 +119,40 @@ export function PrinterActions({ id }: { id: string }) {
         Delete
       </Button>
     </span>
+  );
+}
+
+export function CategoryCourseSelect({ categoryId, value }: { categoryId: string; value: number }) {
+  const [pending, start] = useTransition();
+  return (
+    <div className="w-36">
+      <Select className="h-8 text-xs" value={value} disabled={pending} onChange={(e) => start(() => setCategoryCourse(categoryId, Number(e.target.value)))} aria-label="Course">
+        {Object.entries(COURSES).map(([k, label]) => (
+          <option key={k} value={k}>
+            {label}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+export function CourseFiringToggle({ on }: { on: boolean }) {
+  // Show the new state straight away; the server catches up.
+  const [checked, setChecked] = useState(on);
+  const [, start] = useTransition();
+  return (
+    <label className="flex items-center gap-2 text-sm font-medium">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-brand-600"
+        checked={checked}
+        onChange={(e) => {
+          setChecked(e.target.checked);
+          start(() => setCourseFiring(e.target.checked));
+        }}
+      />
+      Hold later courses until the waiter fires them
+    </label>
   );
 }

@@ -290,7 +290,7 @@ export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret, webhookUrl }:
           Find your keys in Razorpay Dashboard → Account &amp; Settings → API Keys. Secrets are stored encrypted.
         </p>
         <p className="text-xs text-stone-500">
-          Webhook URL (event <code>payment.captured</code>): <code className="rounded bg-stone-100 px-1 break-all">{webhookUrl}</code>
+          Webhook URL (events <code>payment.captured</code> and <code>qr_code.credited</code>): <code className="rounded bg-stone-100 px-1 break-all">{webhookUrl}</code>
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <SubmitButton pendingText="Verifying...">{connected ? "Update keys" : "Connect Razorpay"}</SubmitButton>
@@ -314,7 +314,17 @@ export function RazorpayForm({ keyId, hasSecret, hasWebhookSecret, webhookUrl }:
 export function LoyaltyForm({
   r,
 }: {
-  r: { loyaltyEnabled: boolean; loyaltyEarnPer100: string; loyaltyPointValue: string; loyaltyMinRedeem: number; birthdayOfferText: string; reservationsEnabled: boolean };
+  r: {
+    loyaltyEnabled: boolean;
+    loyaltyEarnPer100: string;
+    loyaltyPointValue: string;
+    loyaltyMinRedeem: number;
+    birthdayOfferText: string;
+    reservationsEnabled: boolean;
+    winbackEnabled: boolean;
+    winbackDays: number;
+    winbackOffer: string;
+  };
 }) {
   const [state, action] = useActionState(saveLoyalty, null);
   const [earn, setEarn] = useState(r.loyaltyEarnPer100);
@@ -340,6 +350,20 @@ export function LoyaltyForm({
           <Textarea name="birthdayOfferText" rows={2} defaultValue={r.birthdayOfferText} maxLength={500} />
         </Field>
         <Toggle name="reservationsEnabled" label="Let customers request a table online (booking link)" defaultChecked={r.reservationsEnabled} />
+        <div className="space-y-3 rounded-lg bg-stone-50 p-3">
+          <Toggle name="winbackEnabled" label="“We miss you”: message customers who haven't come back" defaultChecked={r.winbackEnabled} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="After (days)">
+              <Input name="winbackDays" type="number" min={7} max={365} defaultValue={r.winbackDays} />
+            </Field>
+            <div className="sm:col-span-2">
+              <Field label="Offer" hint="Goes into the message, e.g. “a free dessert”">
+                <Input name="winbackOffer" defaultValue={r.winbackOffer} maxLength={120} />
+              </Field>
+            </div>
+          </div>
+          <p className="text-xs text-stone-500">Sent at 9 AM through WhatsApp Business (set the template below), once per absence, never to customers who opted out.</p>
+        </div>
         <div className="flex items-center gap-3">
           <SubmitButton>Save</SubmitButton>
           <FormMessage state={state} />
@@ -378,7 +402,16 @@ export function WhatsAppForm({
   r,
   log,
 }: {
-  r: { waPhoneNumberId: string; hasToken: boolean; waTemplateLang: string; waBillTemplate: string; waBookingTemplate: string; waBirthdayTemplate: string; waSummaryTemplate: string };
+  r: {
+    waPhoneNumberId: string;
+    hasToken: boolean;
+    waTemplateLang: string;
+    waBillTemplate: string;
+    waBookingTemplate: string;
+    waBirthdayTemplate: string;
+    waSummaryTemplate: string;
+    waWinbackTemplate: string;
+  };
   log: { id: string; when: string; to: string; kind: string; status: string; error: string | null }[];
 }) {
   const [state, action] = useActionState(saveWhatsApp, null);
@@ -415,6 +448,9 @@ export function WhatsAppForm({
           </Field>
           <Field label="Daily summary to owner (9 AM)" hint="{{1}} restaurant, {{2}} date, {{3}} sales, {{4}} bills">
             <Input name="waSummaryTemplate" defaultValue={r.waSummaryTemplate} placeholder="daily_summary" />
+          </Field>
+          <Field label="We miss you (marketing template, 9 AM)" hint="{{1}} name, {{2}} restaurant, {{3}} offer">
+            <Input name="waWinbackTemplate" defaultValue={r.waWinbackTemplate} placeholder="we_miss_you" />
           </Field>
         </div>
         <div className="flex flex-wrap items-center gap-3">

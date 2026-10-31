@@ -98,6 +98,16 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Thali builder & kids | "Thali template" pre-fills choose-2-sabzi / dal / bread / extras groups; customers see per-group progress. Dishes can be marked kids-friendly, with a Kids filter on the menu |
 | Dish ratings | After paying, guests rate each dish (1-5 stars, optional comment) once, within 7 days. The menu shows the average after 3 ratings; owners see ratings in the menu list, comments and poorly rated dishes in Insights |
 
+## Kitchen & counter automation
+
+| Feature | How it works |
+|---|---|
+| Auto sold out | When stock can't cover one more portion of a dish (any size), it shows "Sold out" on the QR menu and POS and can't be ordered; it comes back as soon as a purchase or stock count covers it. Separate from the owner's manual sold-out switch. Can be turned off in Inventory |
+| Course firing | Categories are Starters / Mains / Desserts. On a ticket that mixes courses, later courses are held: they don't show on the kitchen screen or print. The waiter taps "Fire Mains" (the table map nudges them once the earlier course is ready), which prints a "FIRE MAINS" ticket and starts its kitchen timer. Bills can't be generated while a course is still held |
+| Auto-confirmed UPI | With Razorpay connected, the POS shows a single-use dynamic UPI QR for the amount and confirms itself (webhook `qr_code.credited`, plus polling if the webhook isn't set up). A personal UPI ID QR can't be confirmed automatically |
+| Soundbox | POS and order screens announce online payments out loud ("540 रुपये प्राप्त हुए", or English if the device has no Hindi voice), including customers paying from their phones |
+| "We miss you" | Customers away for N days (default 30) get one WhatsApp offer per absence at 9 AM (up to 200 per outlet per day), never if they opted out. The Customers page lists who is due, lets you send by hand without the WhatsApp API, and shows how many came back |
+
 ## Going live (Vercel + Supabase)
 
 1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.

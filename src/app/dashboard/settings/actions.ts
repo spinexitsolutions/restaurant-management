@@ -152,6 +152,9 @@ const loyaltySchema = z.object({
   loyaltyMinRedeem: z.coerce.number().int().min(1).max(100000),
   birthdayOfferText: z.string().trim().min(5, "Write an offer message").max(500),
   reservationsEnabled: checkbox,
+  winbackEnabled: checkbox,
+  winbackDays: z.coerce.number().int().min(7, "At least 7 days").max(365),
+  winbackOffer: z.string().trim().min(3, "Write the offer, e.g. 15% off your next visit").max(120),
 });
 
 export async function saveLoyalty(_: FormState, formData: FormData): Promise<FormState> {
@@ -190,6 +193,7 @@ const waSchema = z.object({
   waBookingTemplate: templateName,
   waBirthdayTemplate: templateName,
   waSummaryTemplate: templateName,
+  waWinbackTemplate: templateName,
 });
 
 export async function saveWhatsApp(_: FormState, formData: FormData): Promise<FormState> {

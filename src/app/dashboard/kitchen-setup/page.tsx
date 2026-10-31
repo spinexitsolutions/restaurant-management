@@ -3,15 +3,16 @@ import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { appUrl } from "@/lib/utils";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { AddPrinterForm, AddStationForm, CategoryStationSelect, PrinterActions, StationDelete } from "./forms";
+import { AddPrinterForm, AddStationForm, CategoryCourseSelect, CategoryStationSelect, CourseFiringToggle, PrinterActions, StationDelete } from "./forms";
 
 export const metadata = { title: "Kitchen setup" };
 
 export default async function KitchenSetupPage() {
   const { restaurantId } = await requireRestaurantSession(MANAGE_ROLES);
+  const restaurant = await db.restaurant.findUniqueOrThrow({ where: { id: restaurantId }, select: { courseFiring: true } });
   const [stations, categories, printers, pending] = await Promise.all([
     db.kitchenStation.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, include: { _count: { select: { categories: true, items: true } } } }),
-    db.category.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, stationId: true, _count: { select: { items: true } } } }),
+    db.category.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, stationId: true, course: true, _count: { select: { items: true } } } }),
     db.printer.findMany({ where: { restaurantId }, orderBy: { createdAt: "asc" }, include: { station: { select: { name: true } } } }),
     db.printJob.groupBy({ by: ["printerId", "status"], where: { restaurantId, status: { in: ["PENDING", "FAILED"] } }, _count: true }),
   ]);
@@ -39,6 +40,27 @@ export default async function KitchenSetupPage() {
           {stations.length === 0 && <span className="text-sm text-stone-400">No stations yet: everything goes to one kitchen.</span>}
         </div>
         <AddStationForm />
+      </Card>
+
+      <Card className="p-0">
+        <div className="space-y-2 px-5 pt-5 pb-3">
+          <h2 className="font-semibold">Courses</h2>
+          <p className="text-sm text-stone-500">
+            When a ticket has starters and mains together, mains wait until the waiter taps <strong>Fire Mains</strong>, so they arrive hot after the starters. Set
+            which course each category is.
+          </p>
+          <CourseFiringToggle on={restaurant.courseFiring} />
+        </div>
+        {restaurant.courseFiring && (
+          <ul className="divide-y divide-stone-100">
+            {categories.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3 px-5 py-2 text-sm">
+                <span>{c.name}</span>
+                <CategoryCourseSelect categoryId={c.id} value={c.course} />
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       {stations.length > 0 && (

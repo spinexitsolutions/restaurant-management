@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { formatINR, toPaise } from "@/lib/gst";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { BILLING_ROLES } from "@/server/orders";
-import { AdjustPointsForm, CustomerForm } from "../forms";
+import { AdjustPointsForm, CustomerForm, OptOutToggle } from "../forms";
 
 export const metadata = { title: "Customer" };
 
@@ -56,6 +56,9 @@ export default async function CustomerPage({ params }: { params: Promise<{ id: s
       <Card className="mb-6">
         <h2 className="mb-3 font-semibold">Details</h2>
         <CustomerForm customer={c} />
+        <div className="mt-4">
+          <OptOutToggle id={c.id} optOut={c.marketingOptOut} />
+        </div>
         {top.length > 0 && <p className="mt-4 text-sm text-stone-600">Usually orders: {top.map(([n, q]) => `${n} (${q})`).join(", ")}</p>}
       </Card>
 

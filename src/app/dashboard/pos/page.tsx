@@ -9,5 +9,5 @@ export const metadata = { title: "POS" };
 export default async function PosPage() {
   const session = await requireRestaurantSession(BILLING_ROLES);
   const [floor, stats] = await Promise.all([getFloor(session.restaurantId), todayStats(session.restaurantId)]);
-  return <PosScreen title="POS billing" tables={floor.tables} others={floor.others} stats={stats} />;
+  return <PosScreen title="POS billing" tables={floor.tables} others={floor.others} stats={stats} recentPayments={floor.recentPayments} />;
 }

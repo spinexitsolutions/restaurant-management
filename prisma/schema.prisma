@@ -154,6 +154,17 @@ model Restaurant {
 
   reservationsEnabled Boolean @default(false) // public booking page
 
+  // Dishes go "sold out" by themselves when an ingredient can't cover one more portion
+  autoSoldOut  Boolean @default(true)
+  // Hold later courses (mains, desserts) until a waiter fires them
+  courseFiring Boolean @default(false)
+
+  // Win-back: message customers who haven't visited for a while
+  winbackEnabled    Boolean @default(false)
+  winbackDays       Int     @default(30)
+  winbackOffer      String  @default("15% off your next visit")
+  waWinbackTemplate String? // {{1}} name, {{2}} restaurant, {{3}} offer
+
   // Aggregators: commission % used for reports (orders are punched in manually)
   zomatoCommission Decimal @default(25) @db.Decimal(5, 2)
   swiggyCommission Decimal @default(25) @db.Decimal(5, 2)
@@ -236,6 +247,7 @@ model Category {
   isActive     Boolean         @default(true)
   stationId    String?
   station      KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  course       Int             @default(0) // 0 none, 1 starter, 2 main, 3 dessert
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   items        MenuItem[]
@@ -268,6 +280,7 @@ model MenuItem {
   media           ItemMedia[]
   ratings         DishRating[]
   isKidsFriendly  Boolean         @default(false)
+  autoSoldOut     Boolean         @default(false) // set by inventory, separate from the owner's isAvailable
   pairsWith       String[]        @default([]) // menu item ids suggested with this dish
   stationId       String? // overrides the category's station
   station         KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
@@ -388,9 +401,10 @@ model Order {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  items    OrderItem[]
-  kots     Kot[]
-  payments Payment[]
+  items           OrderItem[]
+  kots            Kot[]
+  payments        Payment[]
+  paymentRequests PaymentRequest[]
 
   @@unique([restaurantId, invoiceNumber])
   @@index([restaurantId, status])
@@ -434,7 +448,10 @@ model OrderItem {
   note          String?
   status        ItemStatus @default(NEW)
   stockDeducted Boolean    @default(false)
-  stationId     String? // kitchen station when ordered // ingredients taken from inventory
+  stationId     String? // kitchen station when ordered
+  course        Int        @default(0)
+  held          Boolean    @default(false) // waiting to be fired
+  firedAt       DateTime? // ingredients taken from inventory
   variantId     String?
   cancelReason  String?
   createdAt     DateTime   @default(now())
@@ -606,6 +623,8 @@ model Customer {
   gstin               String?
   businessName        String?
   businessAddress     String?
+  lastWinbackAt       DateTime?
+  marketingOptOut     Boolean              @default(false)
   lastBirthdayWish    Int? // year of the last automatic birthday message
   lastAnniversaryWish Int?
   createdAt           DateTime             @default(now())
@@ -840,4 +859,19 @@ model DishRating {
   @@unique([orderId, menuItemId])
   @@index([restaurantId, createdAt])
   @@index([menuItemId])
+}
+
+// A Razorpay dynamic UPI QR shown at the POS for one amount; paid status comes by webhook or polling.
+model PaymentRequest {
+  id        String    @id @default(cuid())
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  qrId      String    @unique
+  amount    Decimal   @db.Decimal(10, 2)
+  imageUrl  String
+  status    String    @default("OPEN") // OPEN | PAID | CLOSED
+  createdAt DateTime  @default(now())
+  paidAt    DateTime?
+
+  @@index([orderId, status])
 }

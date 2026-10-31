@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { loadMenu } from "@/server/menu";
+import { getOnlinePaymentMode } from "@/lib/payments";
 import { getOrderView } from "@/server/order-view";
 import { BILLING_ROLES, ORDER_ROLES } from "@/server/orders";
 import { OrderWorkspace } from "./order-workspace";
@@ -52,6 +53,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
       menu={await loadMenu(restaurant.id, Number(restaurant.defaultGstRate))}
       canBill={BILLING_ROLES.includes(session.role)}
       restaurant={{
+        razorpay: getOnlinePaymentMode(restaurant) === "RAZORPAY",
         loyalty: { enabled: restaurant.loyaltyEnabled, pointValue: Number(restaurant.loyaltyPointValue), minRedeem: restaurant.loyaltyMinRedeem },
         name: restaurant.name,
         upiId: restaurant.upiId,

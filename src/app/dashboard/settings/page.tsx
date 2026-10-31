@@ -63,6 +63,9 @@ export default async function SettingsPage() {
               loyaltyMinRedeem: r.loyaltyMinRedeem,
               birthdayOfferText: r.birthdayOfferText,
               reservationsEnabled: r.reservationsEnabled,
+              winbackEnabled: r.winbackEnabled,
+              winbackDays: r.winbackDays,
+              winbackOffer: r.winbackOffer,
             }}
           />
           <AggregatorForm r={{ zomatoCommission: r.zomatoCommission.toString(), swiggyCommission: r.swiggyCommission.toString() }} />
@@ -75,6 +78,7 @@ export default async function SettingsPage() {
               waBookingTemplate: r.waBookingTemplate ?? "",
               waBirthdayTemplate: r.waBirthdayTemplate ?? "",
               waSummaryTemplate: r.waSummaryTemplate ?? "",
+              waWinbackTemplate: r.waWinbackTemplate ?? "",
             }}
             log={waLog.map((m) => ({
               id: m.id,

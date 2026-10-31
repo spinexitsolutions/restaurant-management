@@ -84,3 +84,16 @@ export async function testPrinter(id: string): Promise<FormState> {
   const ok = await enqueueTestPrint(restaurantId, id);
   return ok ? { ok: "Test page sent to the queue" } : { error: "Printer not found" };
 }
+
+export async function setCategoryCourse(categoryId: string, course: number) {
+  const { restaurantId } = await requireRestaurantSession(MANAGE_ROLES);
+  if (![0, 1, 2, 3].includes(course)) return;
+  await db.category.updateMany({ where: { id: categoryId, restaurantId }, data: { course } });
+  done("Saved");
+}
+
+export async function setCourseFiring(on: boolean) {
+  const { restaurantId } = await requireRestaurantSession(MANAGE_ROLES);
+  await db.restaurant.update({ where: { id: restaurantId }, data: { courseFiring: on } });
+  done("Saved");
+}

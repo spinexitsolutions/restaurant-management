@@ -115,7 +115,9 @@ export function OrderTracker({
                   {i.variantName && ` (${i.variantName})`}
                 </p>
                 {i.addons.length > 0 && <p className="text-xs text-stone-500">+ {i.addons.join(", ")}</p>}
-                <p className={cn("text-xs font-semibold", i.pending ? "text-amber-600" : STATUS_COLOR[i.status])}>{i.pending ? "Awaiting confirmation" : STATUS_TEXT[i.status]}</p>
+                <p className={cn("text-xs font-semibold", i.pending ? "text-amber-600" : i.held ? "text-purple-600" : STATUS_COLOR[i.status])}>
+                  {i.pending ? "Awaiting confirmation" : i.held ? "Coming after the earlier course" : STATUS_TEXT[i.status]}
+                </p>
               </div>
               <span className="text-sm">{formatINR(i.unitPrice * i.quantity)}</span>
             </li>

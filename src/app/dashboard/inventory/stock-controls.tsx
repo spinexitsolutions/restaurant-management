@@ -6,7 +6,7 @@ import { SubmitButton } from "@/components/submit-button";
 import { formatINR } from "@/lib/gst";
 import { UNITS } from "@/lib/inventory";
 import { cn } from "@/lib/utils";
-import { createIngredient, stockEntry, updateIngredient } from "./actions";
+import { createIngredient, setAutoSoldOut, stockEntry, updateIngredient } from "./actions";
 import { formatQty } from "./tabs";
 
 export function AddIngredientForm() {
@@ -138,5 +138,25 @@ export function IngredientRow({ row }: { row: Row }) {
         {msg?.error && <p className="mt-1 text-xs text-red-600">{msg.error}</p>}
       </td>
     </tr>
+  );
+}
+
+export function AutoSoldOutToggle({ on }: { on: boolean }) {
+  // Show the new state straight away; the server catches up.
+  const [checked, setChecked] = useState(on);
+  const [, start] = useTransition();
+  return (
+    <label className="flex items-center gap-2 text-sm font-medium">
+      <input
+        type="checkbox"
+        className="h-4 w-4 accent-brand-600"
+        checked={checked}
+        onChange={(e) => {
+          setChecked(e.target.checked);
+          start(() => setAutoSoldOut(e.target.checked));
+        }}
+      />
+      Mark dishes sold out automatically when an ingredient runs out
+    </label>
   );
 }
