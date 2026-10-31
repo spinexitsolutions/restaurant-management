@@ -43,7 +43,8 @@ export interface OrderView {
   invoiceNumber: string | null;
   discount: { type: "PERCENT" | "FLAT"; value: number; note: string | null } | null;
   points: { redeemed: number; value: number; earned: number };
-  customer: { id: string; name: string | null; phone: string; points: number; visits: number } | null;
+  customer: { id: string; name: string | null; phone: string; points: number; visits: number; gstin: string | null; businessName: string | null; businessAddress: string | null } | null;
+  buyer: { gstin: string; name: string | null; address: string | null } | null;
   createdAt: string;
   kots: {
     id: string;
@@ -60,7 +61,7 @@ export interface OrderView {
 }
 
 const orderInclude = {
-  customer: { select: { id: true, name: true, phone: true, points: true, visits: true } },
+  customer: { select: { id: true, name: true, phone: true, points: true, visits: true, gstin: true, businessName: true, businessAddress: true } },
   kots: { orderBy: { createdAt: "asc" as const }, include: { items: { orderBy: { createdAt: "asc" as const } } } },
   payments: { orderBy: { createdAt: "asc" as const } },
 };
@@ -115,6 +116,7 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
         : null,
     points: { redeemed: order.pointsRedeemed, value: toPaise(order.pointsRedeemValue), earned: order.pointsEarned },
     customer: order.customer,
+    buyer: order.buyerGstin ? { gstin: order.buyerGstin, name: order.buyerName, address: order.buyerAddress } : null,
     createdAt: order.createdAt.toISOString(),
     kots: order.kots.map((k) => ({
       id: k.id,

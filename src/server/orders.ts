@@ -8,6 +8,7 @@ import { orderBill, paiseToRupees } from "@/lib/order-bill";
 import { subscriptionStatus } from "@/lib/plans";
 import { onBilled, onPaid, refundPoints } from "./customers";
 import { consumeItems, returnItems } from "./inventory";
+import { enqueueBill, enqueueKot } from "./printing";
 
 type Tx = Prisma.TransactionClient;
 
@@ -62,7 +63,7 @@ async function resolveLines(tx: Tx, restaurantId: string, defaultGstRate: number
   if (inputs.length > 50) throw new OrderError("Too many items in one order");
   const items = await tx.menuItem.findMany({
     where: { restaurantId, id: { in: [...new Set(inputs.map((i) => i.itemId))] } },
-    include: { category: { select: { isActive: true } }, variants: true, addonGroups: { include: { options: true } } },
+    include: { category: { select: { isActive: true, stationId: true } }, variants: true, addonGroups: { include: { options: true } } },
   });
   const byId = new Map(items.map((i) => [i.id, i]));
 
@@ -101,6 +102,8 @@ async function resolveLines(tx: Tx, restaurantId: string, defaultGstRate: number
     return {
       menuItemId: item.id,
       variantId: line.variantId,
+      // Dish's own station, else its category's station, else the main kitchen.
+      stationId: item.stationId ?? item.category.stationId ?? null,
       name: item.name,
       variantName: line.variantName,
       addons: line.addons.map((a) => ({ name: a.name, price: Number(paiseToRupees(a.price)) })),
@@ -203,7 +206,10 @@ export async function placeItems(input: PlaceItemsInput) {
         items: { create: items.map((i) => ({ ...i, orderId: order!.id })) },
       },
     });
-    if (input.kotStatus === "ACCEPTED") await consumeItems(tx, input.restaurantId, { kotId: kot.id });
+    if (input.kotStatus === "ACCEPTED") {
+      await consumeItems(tx, input.restaurantId, { kotId: kot.id });
+      await enqueueKot(tx, input.restaurantId, kot.id);
+    }
     await bumpLive(tx, input.restaurantId);
     return { order, kot };
   });
@@ -215,7 +221,10 @@ export async function decideKot(restaurantId: string, kotId: string, accept: boo
     if (!kot) throw new OrderError("Order not found");
     if (kot.status !== "PENDING_APPROVAL") throw new OrderError("This order was already handled");
     await tx.kot.update({ where: { id: kotId }, data: { status: accept ? "ACCEPTED" : "REJECTED" } });
-    if (accept) await consumeItems(tx, restaurantId, { kotId });
+    if (accept) {
+      await consumeItems(tx, restaurantId, { kotId });
+      await enqueueKot(tx, restaurantId, kotId);
+    }
     if (!accept) {
       await tx.orderItem.updateMany({ where: { kotId }, data: { status: "CANCELLED", cancelReason: "Rejected by staff" } });
       // A customer order that was only ever this rejected KOT should not keep the table busy.
@@ -253,6 +262,13 @@ export async function cancelItem(restaurantId: string, itemId: string, reason: s
     await tx.orderItem.update({ where: { id: itemId }, data: { status: "CANCELLED", cancelReason: reason.trim() || "Cancelled" } });
     // Food the kitchen hadn't started goes back into stock; started food counts as used.
     if (item.status === "NEW") await returnItems(tx, restaurantId, [itemId]);
+    // Tell the kitchen printer, which already printed this item.
+    const kot = await tx.kot.findUnique({ where: { id: item.kotId }, select: { status: true } });
+    if (kot?.status === "ACCEPTED") {
+      await enqueueKot(tx, restaurantId, item.kotId, {
+        cancelled: { name: item.name, variantName: item.variantName, quantity: item.quantity, stationId: item.stationId, reason: reason.trim() || "Cancelled" },
+      });
+    }
     await bumpLive(tx, restaurantId);
   });
 }
@@ -320,6 +336,7 @@ export async function generateBill(restaurantId: string, orderId: string) {
       await tx.serviceRequest.updateMany({ where: { tableId: order.tableId, type: "REQUEST_BILL", resolvedAt: null }, data: { resolvedAt: new Date() } });
     }
     await onBilled(tx, updated);
+    await enqueueBill(tx, restaurantId, orderId);
     await bumpLive(tx, restaurantId);
     return updated;
   });
@@ -532,6 +549,7 @@ export async function splitOrder(restaurantId: string, orderId: string, parts: {
             status: item.status,
             variantId: item.variantId,
             stockDeducted: item.stockDeducted,
+            stationId: item.stationId,
           },
         });
       }
@@ -588,6 +606,32 @@ export async function redeemPoints(restaurantId: string, orderId: string, points
     const error = checkRedemption(points, order.customer.points, before.subtotal - before.discount, s);
     if (error) throw new OrderError(error);
     await tx.order.update({ where: { id: orderId }, data: { pointsRedeemed: points, pointsRedeemValue: paiseToRupees(redeemValuePaise(points, s)) } });
+    await bumpLive(tx, restaurantId);
+  });
+}
+
+/** B2B: prints the buyer's GSTIN, legal name and address on the tax invoice. Empty gstin clears it. */
+export async function setOrderBuyer(restaurantId: string, orderId: string, buyer: { gstin: string; name: string; address: string }) {
+  const { gstinError } = await import("@/lib/gstin");
+  return db.$transaction(async (tx) => {
+    const order = await tx.order.findFirst({ where: { id: orderId, restaurantId } });
+    if (!order) throw new OrderError("Order not found");
+    if (order.status !== "OPEN") throw new OrderError("Reopen the bill to change the buyer's GST details");
+    if (order.channel) throw new OrderError("Aggregator orders are billed without GST, so they can't carry a buyer GSTIN");
+    const gstin = buyer.gstin.trim().toUpperCase();
+    if (!gstin) {
+      await tx.order.update({ where: { id: orderId }, data: { buyerGstin: null, buyerName: null, buyerAddress: null } });
+    } else {
+      const err = gstinError(gstin);
+      if (err) throw new OrderError(err);
+      if (buyer.name.trim().length < 2) throw new OrderError("Enter the buyer's registered business name");
+      const data = { buyerGstin: gstin, buyerName: buyer.name.trim().slice(0, 120), buyerAddress: buyer.address.trim().slice(0, 300) || null };
+      await tx.order.update({ where: { id: orderId }, data });
+      // Remember it on the customer so it fills in next time.
+      if (order.customerId) {
+        await tx.customer.update({ where: { id: order.customerId }, data: { gstin, businessName: data.buyerName, businessAddress: data.buyerAddress } });
+      }
+    }
     await bumpLive(tx, restaurantId);
   });
 }

@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/auth";
+import { getValidUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { formatINR, toPaise } from "@/lib/gst";
@@ -8,13 +8,13 @@ import { subscriptionStatus, type PlanDef } from "@/lib/plans";
 import { applySubscription } from "@/server/subscriptions";
 import { istDate } from "@/lib/numbering";
 import { logout } from "../(auth)/actions";
+import { ResetOwnerButton } from "./reset-owner";
 
 export const metadata = { title: "Super admin" };
 
 async function requireSuperAdmin() {
-  const session = await getSession();
-  const user = session && (await db.user.findUnique({ where: { id: session.userId }, select: { role: true, isActive: true } }));
-  if (!user || !user.isActive || user.role !== "SUPER_ADMIN") redirect("/login");
+  const user = await getValidUser();
+  if (!user || user.role !== "SUPER_ADMIN") redirect("/login");
 }
 
 async function toggleRestaurant(formData: FormData) {
@@ -136,6 +136,7 @@ export default async function AdminPage() {
                     <input type="hidden" name="id" value={r.id} />
                     <button className={`text-sm ${r.isActive ? "text-red-600" : "text-green-700"}`}>{r.isActive ? "Suspend" : "Activate"}</button>
                   </form>
+                  <ResetOwnerButton restaurantId={r.id} />
                 </td>
               </tr>
             ))}

@@ -4,7 +4,10 @@ import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { createSession, destroySession } from "@/lib/auth";
+import type { Role } from "@prisma/client";
+import { destroySession, signIn } from "@/lib/auth";
+import { clientIp, lockMessage, recordAttempt } from "@/server/auth-guard";
+import { consumeOtp, findAccount, issueOtp, OtpError, otpAvailable } from "@/server/otp";
 import { createSampleMenu } from "@/lib/sample-menu";
 import { slugify } from "@/lib/utils";
 
@@ -73,7 +76,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     });
   });
 
-  await createSession({ userId: user.id, restaurantId: user.restaurantId, role: user.role, name: user.name });
+  await signIn(user);
   redirect("/dashboard");
 }
 
@@ -82,28 +85,114 @@ const loginSchema = z.object({
   password: z.string().min(1, "Enter your password"),
 });
 
+const HOME: Record<string, string> = {
+  SUPER_ADMIN: "/admin",
+  CHEF: "/dashboard/kitchen",
+  WAITER: "/dashboard/waiter",
+  CASHIER: "/dashboard/pos",
+};
+
+// Compared against when the email is unknown, so a wrong email takes as long as a wrong password.
+const DUMMY_HASH = "$2b$10$CwTycUXWue0Thq9StjUM0uJ8DHsqKbqTnQjnqF1F6R4N4zGq3m2Gm";
+
+/** Checks the account can sign in, records the success and starts the session. */
+async function finishSignIn(user: { id: string; isActive: boolean; restaurantId: string | null; role: Role; name: string; sessionVersion: number }, key: string, ip: string) {
+  if (!user.isActive) return { error: "Your account has been deactivated. Contact your manager." };
+  if (user.restaurantId) {
+    const r = await db.restaurant.findUnique({ where: { id: user.restaurantId }, select: { isActive: true } });
+    if (!r?.isActive) return { error: "This restaurant account is suspended." };
+  }
+  await recordAttempt(key, ip, true);
+  await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  await signIn(user);
+  redirect(HOME[user.role] ?? "/dashboard");
+}
+
 export async function login(_: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const key = `email:${parsed.data.email}`;
+  const ip = await clientIp();
+  const locked = await lockMessage(key, ip);
+  if (locked) return { error: locked };
 
-  const user = await db.user.findUnique({
-    where: { email: parsed.data.email },
-    include: { restaurant: { select: { isActive: true } } },
+  const user = await db.user.findUnique({ where: { email: parsed.data.email } });
+  const valid = await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH);
+  if (!user || !valid) {
+    await recordAttempt(key, ip, false);
+    return { error: "Incorrect email or password" };
+  }
+  return finishSignIn(user, key, ip);
+}
+
+export type OtpState = { error?: string; ok?: string; step?: "code"; identifier?: string } | null;
+
+const SENT = "If an account matches, we've sent a 6-digit code. It is valid for 10 minutes.";
+
+/** Step 1 of OTP sign-in and password reset: send a code. Never reveals whether the account exists. */
+export async function requestCode(prev: OtpState, formData: FormData): Promise<OtpState> {
+  const identifier = String(formData.get("identifier") ?? "").trim();
+  const purpose = formData.get("purpose") === "LOGIN" ? "LOGIN" : "RESET";
+  if (!identifier) return { error: "Enter your email or mobile number" };
+  if (!otpAvailable()) return { error: "Codes can't be sent yet. Ask your owner or manager to reset your password." };
+  const ip = await clientIp();
+  const locked = await lockMessage(`otp:${identifier.toLowerCase()}`, ip);
+  if (locked) return { error: locked };
+
+  const user = await findAccount(identifier);
+  if (user) {
+    try {
+      await issueOtp(user, purpose, identifier.includes("@"));
+    } catch (e) {
+      if (e instanceof OtpError) return { error: e.message };
+      throw e;
+    }
+  } else {
+    await recordAttempt(`otp:${identifier.toLowerCase()}`, ip, false);
+  }
+  return { ok: SENT, step: "code", identifier };
+}
+
+/** Step 2 of OTP sign-in. */
+export async function loginWithCode(prev: OtpState, formData: FormData): Promise<OtpState> {
+  const identifier = String(formData.get("identifier") ?? "").trim();
+  const code = String(formData.get("code") ?? "");
+  const key = `otp:${identifier.toLowerCase()}`;
+  const ip = await clientIp();
+  const locked = await lockMessage(key, ip);
+  if (locked) return { error: locked, step: "code", identifier };
+  const user = await findAccount(identifier);
+  if (!user || !(await consumeOtp(user, "LOGIN", code))) {
+    await recordAttempt(key, ip, false);
+    return { error: "Wrong or expired code", step: "code", identifier };
+  }
+  return (await finishSignIn(user, key, ip)) as OtpState;
+}
+
+const newPassword = z.string().min(8, "Password must be at least 8 characters").max(200);
+
+/** Step 2 of password reset: check the code, set the new password and sign out every other device. */
+export async function resetPassword(prev: OtpState, formData: FormData): Promise<OtpState> {
+  const identifier = String(formData.get("identifier") ?? "").trim();
+  const code = String(formData.get("code") ?? "");
+  const pw = newPassword.safeParse(formData.get("password"));
+  if (!pw.success) return { error: pw.error.issues[0].message, step: "code", identifier };
+  const key = `otp:${identifier.toLowerCase()}`;
+  const ip = await clientIp();
+  const locked = await lockMessage(key, ip);
+  if (locked) return { error: locked, step: "code", identifier };
+  const user = await findAccount(identifier);
+  if (!user || !(await consumeOtp(user, "RESET", code))) {
+    await recordAttempt(key, ip, false);
+    return { error: "Wrong or expired code", step: "code", identifier };
+  }
+  const updated = await db.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await bcrypt.hash(pw.data, 10), sessionVersion: { increment: 1 } },
   });
-  const valid = user && (await bcrypt.compare(parsed.data.password, user.passwordHash));
-  if (!user || !valid) return { error: "Incorrect email or password" };
-  if (!user.isActive) return { error: "Your account has been deactivated. Contact your manager." };
-  if (user.restaurant && !user.restaurant.isActive) return { error: "This restaurant account is suspended." };
-
-  await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-  await createSession({ userId: user.id, restaurantId: user.restaurantId, role: user.role, name: user.name });
-  const home: Record<string, string> = {
-    SUPER_ADMIN: "/admin",
-    CHEF: "/dashboard/kitchen",
-    WAITER: "/dashboard/waiter",
-    CASHIER: "/dashboard/pos",
-  };
-  redirect(home[user.role] ?? "/dashboard");
+  // A successful reset also clears password lockouts on the account.
+  await recordAttempt(`email:${updated.email}`, ip, true);
+  return (await finishSignIn(updated, key, ip)) as OtpState;
 }
 
 export async function logout() {

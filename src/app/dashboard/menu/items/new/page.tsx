@@ -21,6 +21,7 @@ export default async function NewItemPage({ searchParams }: { searchParams: Prom
       <ItemForm
         categories={categories}
         defaultGstRate={restaurant.defaultGstRate.toString()}
+        stations={await db.kitchenStation.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } })}
         initial={{
           categoryId: categories.find((c) => c.id === category)?.id ?? categories[0].id,
           name: "",
@@ -32,6 +33,7 @@ export default async function NewItemPage({ searchParams }: { searchParams: Prom
           isAvailable: true,
           isBestseller: false,
           spiceLevel: "0",
+          stationId: "",
           prepTimeMinutes: "",
           variants: [],
           addonGroups: [],

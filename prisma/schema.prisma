@@ -196,6 +196,9 @@ model Restaurant {
   images               Image[]
   ingredients          Ingredient[]
   subscriptionPayments SubscriptionPayment[]
+  stations             KitchenStation[]
+  printers             Printer[]
+  printJobs            PrintJob[]
   whatsappMessages     WhatsAppMessage[]
   customers            Customer[]
   reservations         Reservation[]
@@ -203,62 +206,67 @@ model Restaurant {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  restaurantId String?
-  restaurant   Restaurant?  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  name         String
-  email        String       @unique
-  phone        String?
-  passwordHash String
-  pinHash      String? // 4-6 digit approval PIN for owners and managers
-  role         Role
-  isActive     Boolean      @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  orders       Order[]      @relation("OrderWaiter")
-  attendance   Attendance[]
+  id             String       @id @default(cuid())
+  restaurantId   String?
+  restaurant     Restaurant?  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name           String
+  email          String       @unique
+  phone          String?
+  passwordHash   String
+  sessionVersion Int          @default(0) // bumped on password reset: signs out every device
+  pinHash        String? // 4-6 digit approval PIN for owners and managers
+  role           Role
+  isActive       Boolean      @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  orders         Order[]      @relation("OrderWaiter")
+  attendance     Attendance[]
 
   @@index([restaurantId])
 }
 
 model Category {
-  id           String     @id @default(cuid())
+  id           String          @id @default(cuid())
   restaurantId String
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   name         String
   description  String?
-  sortOrder    Int        @default(0)
-  isActive     Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  sortOrder    Int             @default(0)
+  isActive     Boolean         @default(true)
+  stationId    String?
+  station      KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
   items        MenuItem[]
 
   @@index([restaurantId, sortOrder])
 }
 
 model MenuItem {
-  id              String        @id @default(cuid())
+  id              String          @id @default(cuid())
   restaurantId    String
-  restaurant      Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant      Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   categoryId      String
-  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category        Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   name            String
   description     String?
-  price           Decimal       @db.Decimal(10, 2)
+  price           Decimal         @db.Decimal(10, 2)
   imageUrl        String?
-  foodType        FoodType      @default(VEG)
-  gstRate         Decimal?      @db.Decimal(5, 2) // null = restaurant default
-  isAvailable     Boolean       @default(true)
-  isBestseller    Boolean       @default(false)
-  spiceLevel      Int           @default(0) // 0-3
+  foodType        FoodType        @default(VEG)
+  gstRate         Decimal?        @db.Decimal(5, 2) // null = restaurant default
+  isAvailable     Boolean         @default(true)
+  isBestseller    Boolean         @default(false)
+  spiceLevel      Int             @default(0) // 0-3
   prepTimeMinutes Int?
-  sortOrder       Int           @default(0)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   variants        ItemVariant[]
   addonGroups     AddonGroup[]
   recipe          RecipeLine[]
+  stationId       String? // overrides the category's station
+  station         KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
 
   @@index([restaurantId, categoryId])
 }
@@ -336,6 +344,10 @@ model Order {
   waiterId      String?
   waiter        User?        @relation("OrderWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
   channel       String? // ZOMATO | SWIGGY for aggregator orders
+  // B2B: buyer's GST details printed on the tax invoice
+  buyerGstin    String?
+  buyerName     String?
+  buyerAddress  String?
   channelRef    String? // aggregator's order id
   customerName  String?
   customerPhone String?
@@ -417,7 +429,8 @@ model OrderItem {
   gstRate       Decimal    @db.Decimal(5, 2)
   note          String?
   status        ItemStatus @default(NEW)
-  stockDeducted Boolean    @default(false) // ingredients taken from inventory
+  stockDeducted Boolean    @default(false)
+  stationId     String? // kitchen station when ordered // ingredients taken from inventory
   variantId     String?
   cancelReason  String?
   createdAt     DateTime   @default(now())
@@ -586,6 +599,9 @@ model Customer {
   totalSpent          Decimal              @default(0) @db.Decimal(12, 2)
   points              Int                  @default(0)
   lastVisitAt         DateTime?
+  gstin               String?
+  businessName        String?
+  businessAddress     String?
   lastBirthdayWish    Int? // year of the last automatic birthday message
   lastAnniversaryWish Int?
   createdAt           DateTime             @default(now())
@@ -710,4 +726,84 @@ model WhatsAppMessage {
   createdAt    DateTime   @default(now())
 
   @@index([restaurantId, createdAt])
+}
+
+// ---------- Auth security ----------
+
+// Failed and successful sign-in attempts, used to lock out password guessing.
+model AuthAttempt {
+  id        String   @id @default(cuid())
+  key       String // "email:x@y.com", "ip:1.2.3.4", "otp:<userId>"
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+// One-time codes for password reset and OTP login. Only a hash of the code is stored.
+model OtpCode {
+  id        String    @id @default(cuid())
+  userId    String
+  purpose   String // RESET | LOGIN
+  codeHash  String
+  channel   String // SMS | WHATSAPP | EMAIL | DEV
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// ---------- Kitchen stations & printing ----------
+
+model KitchenStation {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String // Tandoor, Chinese, Bar...
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  categories   Category[]
+  items        MenuItem[]
+  printers     Printer[]
+
+  @@unique([restaurantId, name])
+}
+
+model Printer {
+  id           String          @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  connection   String // BROWSER (print station page: system/USB/Bluetooth) | AGENT (LAN printer via print agent)
+  address      String? // host:port for AGENT
+  paperWidth   Int             @default(80) // 58 or 80 mm
+  printKot     Boolean         @default(true)
+  printBill    Boolean         @default(false)
+  stationId    String? // KOTs only for this station; null = every item
+  station      KitchenStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  agentToken   String          @unique @default(cuid())
+  lastSeenAt   DateTime?
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  jobs         PrintJob[]
+}
+
+model PrintJob {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  printerId    String
+  printer      Printer    @relation(fields: [printerId], references: [id], onDelete: Cascade)
+  kind         String // KOT | BILL | TEST
+  title        String
+  document     Json // receipt lines; rendered to ESC/POS or HTML by the printing device
+  status       String     @default("PENDING") // PENDING | PRINTED | FAILED
+  attempts     Int        @default(0)
+  error        String?
+  createdAt    DateTime   @default(now())
+  printedAt    DateTime?
+
+  @@index([printerId, status, createdAt])
 }

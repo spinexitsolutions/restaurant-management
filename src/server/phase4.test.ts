@@ -15,7 +15,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 4", () => {
   beforeAll(async () => {
     const r = await db.restaurant.create({
       data: {
-        organization: { create: { name: "Test org" } }, name: "P4", slug: `p4-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z5", defaultGstRate: 5, loyaltyEnabled: true, loyaltyEarnPer100: 5, loyaltyPointValue: 1, loyaltyMinRedeem: 10 },
+        organization: { create: { name: "Test org" } }, name: "P4", slug: `p4-${Date.now()}`, gstEnabled: true, gstin: "27ABCDE1234F1Z0", defaultGstRate: 5, loyaltyEnabled: true, loyaltyEarnPer100: 5, loyaltyPointValue: 1, loyaltyMinRedeem: 10 },
     });
     restaurantId = r.id;
     tableId = (await db.diningTable.create({ data: { restaurantId, name: "T1" } })).id;

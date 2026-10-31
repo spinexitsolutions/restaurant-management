@@ -75,6 +75,18 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Daily job (`/api/cron/daily`) | Runs at 9 AM IST via Vercel Cron (`vercel.json`, `CRON_SECRET`): wishes, daily summaries, and closing shifts left open for more than 16 hours |
 | Insights (`/dashboard/insights`) | Week-on-week sales, average bill, busiest/slowest weekday, peak hour, trending dishes, slow sellers (after 3 weeks of history), high food cost, discount and cancellation alerts. **Stock forecast for tomorrow** from the same weekday over 4 weeks. Optional **AI summary** in Hinglish or English written by Claude (`ANTHROPIC_API_KEY`), cached per outlet per day |
 
+## Security, printing, kitchen stations & B2B
+
+| Area | Features |
+|---|---|
+| Sign-in protection | Password logins lock for 15 minutes after 5 failures per account (30 per IP), stored in the database. Unknown emails take as long as wrong passwords. Approval PINs use the same database throttling |
+| OTP login & forgot password | 6-digit codes by WhatsApp (platform Meta number), SMS (MSG91) or email (Resend), whichever is configured. Codes are hashed, expire in 10 minutes, allow 5 tries, max 3 per 15 minutes, and never reveal whether an account exists. Resetting a password signs the user out on every device; so does a manager resetting a staff password. Super admin can issue an owner a temporary password |
+| Kitchen stations (`/dashboard/kitchen-setup`) | Stations like Tandoor / Chinese / Bar. Set per category, override per dish. Each order item remembers its station; the kitchen screen has a tab per station |
+| Thermal printing | KOTs print automatically when an order reaches the kitchen (split by station), a cancellation slip prints when a cooked item is cancelled, and bills print on generate. Reprint buttons on every order. Jobs retry up to 5 times |
+| Print station (`/dashboard/print-station`) | For printers attached to a PC or tablet: the installed printer (silent with Chrome `--kiosk-printing`), USB (WebUSB) or Bluetooth BLE, 58 or 80 mm |
+| Print agent (`print-agent/agent.mjs`) | For network printers (port 9100) or USB device paths: a dependency-free Node script that runs on a PC in the restaurant with the printer's token |
+| B2B invoices | Buyer GSTIN (format, state code and check digit validated), business name and address on the tax invoice and printed bill, remembered on the customer. The sales register CSV marks each bill B2B, B2C or Sec 9(5) with buyer GSTIN for GSTR-1 |
+
 ## Going live (Vercel + Supabase)
 
 1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.

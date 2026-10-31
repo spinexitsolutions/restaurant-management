@@ -24,6 +24,7 @@ import {
   resolveServiceRequest,
   setDiscount,
   redeemPoints,
+  setOrderBuyer,
   setOrderCustomer,
   splitOrder,
   transferOrder,
@@ -236,5 +237,20 @@ export async function applyPoints(orderId: string, points: number) {
   return run(async () => {
     await redeemPoints(s.restaurantId, orderId, points);
     if (points > 0) await audit({ restaurantId: s.restaurantId, actor: s, action: "POINTS_REDEEMED", orderId, details: { points } });
+  });
+}
+
+export async function setBuyer(orderId: string, gstin: string, name: string, address: string) {
+  const s = await requireRestaurantSession(BILLING_ROLES);
+  return run(() => setOrderBuyer(s.restaurantId, orderId, { gstin, name, address }));
+}
+
+export async function reprintOrder(orderId: string, kind: "KOT" | "BILL") {
+  const s = await requireRestaurantSession(ORDER_ROLES);
+  const { reprint } = await import("@/server/printing");
+  return run(async () => {
+    const n = await reprint(s.restaurantId, orderId, kind);
+    if (!n) throw new OrderError("No printer is set up for this. Add one in Kitchen setup.");
+    return { jobs: n };
   });
 }

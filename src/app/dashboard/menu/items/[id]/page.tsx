@@ -28,6 +28,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
       <ItemForm
         categories={categories}
         defaultGstRate={restaurant.defaultGstRate.toString()}
+        stations={await db.kitchenStation.findMany({ where: { restaurantId }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } })}
         initial={{
           id: item.id,
           categoryId: item.categoryId,
@@ -40,6 +41,7 @@ export default async function EditItemPage({ params }: { params: Promise<{ id: s
           isAvailable: item.isAvailable,
           isBestseller: item.isBestseller,
           spiceLevel: String(item.spiceLevel),
+          stationId: item.stationId ?? "",
           prepTimeMinutes: item.prepTimeMinutes ? String(item.prepTimeMinutes) : "",
           variants: item.variants.map((x) => ({ name: x.name, price: x.price.toString() })),
           addonGroups: item.addonGroups.map((g) => ({

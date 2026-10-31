@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { Volume2, VolumeX } from "lucide-react";
 import { FoodTypeIcon } from "@/components/ui";
@@ -29,7 +30,7 @@ export interface KitchenKot {
 const WARN_AFTER = 10;
 const LATE_AFTER = 20;
 
-export function KitchenBoard({ kots }: { kots: KitchenKot[] }) {
+export function KitchenBoard({ kots, stations, active }: { kots: KitchenKot[]; stations: { id: string; name: string }[]; active: string }) {
   const [sound, setSound] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
@@ -47,7 +48,21 @@ export function KitchenBoard({ kots }: { kots: KitchenKot[] }) {
   return (
     <div className="-m-4 min-h-[calc(100dvh-57px)] bg-stone-900 p-4 text-stone-100 sm:-m-6 lg:-m-8 lg:min-h-dvh lg:p-6">
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Kitchen · {cooking.length} active ticket{cooking.length === 1 ? "" : "s"}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="mr-2 text-xl font-bold">
+            {active === "all" ? "Kitchen" : active === "main" ? "Main kitchen" : stations.find((s) => s.id === active)?.name} · {cooking.length} active
+          </h1>
+          {stations.length > 0 &&
+            [{ id: "all", name: "All" }, ...stations, { id: "main", name: "Main" }].map((s) => (
+              <Link
+                key={s.id}
+                href={s.id === "all" ? "/dashboard/kitchen" : `/dashboard/kitchen?station=${s.id}`}
+                className={cn("rounded-full px-3 py-1 text-sm font-medium", active === s.id ? "bg-white text-stone-900" : "bg-stone-700 text-stone-200")}
+              >
+                {s.name}
+              </Link>
+            ))}
+        </div>
         <button
           onClick={() => {
             setSound(!sound);

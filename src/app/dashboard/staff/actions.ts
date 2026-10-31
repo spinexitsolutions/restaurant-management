@@ -75,7 +75,8 @@ export async function resetStaffPassword(id: string, password: string): Promise<
   const res = await manageable(id);
   if ("error" in res) return { error: res.error };
   if (password.length < 6) return { error: "Password must be at least 6 characters" };
-  await db.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
+  // Signs them out everywhere, so an old phone left logged in stops working.
+  await db.user.update({ where: { id }, data: { passwordHash: await bcrypt.hash(password, 10), sessionVersion: { increment: 1 } } });
   return { ok: "Password changed" };
 }
 

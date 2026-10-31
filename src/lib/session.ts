@@ -11,6 +11,7 @@ export interface SessionPayload {
   restaurantId: string | null;
   role: Role;
   name: string;
+  v?: number; // user's sessionVersion when signed in
 }
 
 function secret() {

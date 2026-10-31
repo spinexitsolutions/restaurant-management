@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getSession } from "@/lib/auth";
+import { getValidUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
@@ -7,10 +7,9 @@ const MAX_BYTES = 800 * 1024; // the browser resizes before upload, so real file
 
 // Uploads a menu photo or logo for the signed-in owner/manager's restaurant.
 export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (!session?.restaurantId) return NextResponse.json({ error: "Please log in again" }, { status: 401 });
-  const user = await db.user.findUnique({ where: { id: session.userId }, select: { role: true, isActive: true, restaurantId: true } });
-  if (!user?.isActive || !user.restaurantId || !["OWNER", "MANAGER"].includes(user.role)) {
+  const user = await getValidUser();
+  if (!user) return NextResponse.json({ error: "Please log in again" }, { status: 401 });
+  if (!user.restaurantId || !["OWNER", "MANAGER"].includes(user.role)) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 

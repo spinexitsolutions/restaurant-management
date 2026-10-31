@@ -23,7 +23,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 5", () => {
         slug: `p5-${Date.now()}`,
         state: "Maharashtra",
         gstEnabled: true,
-        gstin: "27ABCDE1234F1Z5",
+        gstin: "27ABCDE1234F1Z0",
         defaultGstRate: 5,
         planExpiresAt: new Date(Date.now() + 5 * 86_400_000),
       },
@@ -54,7 +54,7 @@ describe.skipIf(!process.env.DATABASE_URL)("phase 5", () => {
   it("creates an outlet with copied settings and menu, and copies only missing items", async () => {
     const outlet = await createOutlet(mainId, { name: "Branch", city: "Pune", copyMenu: true });
     expect(outlet.organizationId).toBe(orgId);
-    expect(outlet.gstin).toBe("27ABCDE1234F1Z5");
+    expect(outlet.gstin).toBe("27ABCDE1234F1Z0");
     const copied = await db.menuItem.findMany({ where: { restaurantId: outlet.id }, include: { variants: true, addonGroups: { include: { options: true } } } });
     expect(copied).toHaveLength(2);
     const biryani = copied.find((c) => c.name === "Biryani")!;

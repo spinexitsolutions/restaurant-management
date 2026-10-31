@@ -6,6 +6,8 @@ const base: Omit<ReportOrder, "id" | "items" | "payments" | "billedAt"> = {
   tableName: "T1",
   type: "DINE_IN",
   channel: null,
+  buyerGstin: null,
+  buyerName: null,
   waiterName: "Raju",
   gstEnabled: true,
   gstMode: "EXCLUSIVE",

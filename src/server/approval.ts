@@ -2,18 +2,13 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import type { Prisma, Role } from "@prisma/client";
 import { db } from "@/lib/db";
+import { lockStatus } from "@/lib/lockout";
 import { OrderError } from "./orders";
 
 /** Returned to the client so it can ask for a manager PIN and retry. */
 export const PIN_REQUIRED = "PIN_REQUIRED";
 
 const MANAGERS: Role[] = ["OWNER", "MANAGER"];
-
-// Wrong-PIN throttling per user. In-memory, so it resets on restart and is per server instance;
-// good enough to stop a cashier guessing at the counter.
-const failures = new Map<string, { count: number; until: number }>();
-const MAX_FAILURES = 5;
-const LOCK_MS = 5 * 60 * 1000;
 
 export interface Actor {
   userId: string;
@@ -32,8 +27,11 @@ export async function approve(actor: Actor, pin: string | undefined): Promise<st
   if (!r.requireManagerPin) return null;
   if (!pin) throw new OrderError(PIN_REQUIRED);
 
-  const f = failures.get(actor.userId);
-  if (f && f.until > Date.now()) throw new OrderError("Too many wrong PINs. Try again in a few minutes.");
+  // Wrong-PIN throttling per staff member: 5 tries per 15 minutes, stored in the database.
+  const key = `pin:${actor.userId}`;
+  const recent = await db.authAttempt.findMany({ where: { key, createdAt: { gte: new Date(Date.now() - 15 * 60_000) } }, select: { success: true, createdAt: true } });
+  const lock = lockStatus(recent, new Date(), 5, 15 * 60_000);
+  if (lock.locked) throw new OrderError(`Too many wrong PINs. Try again in ${lock.retryAfterMinutes} minute(s).`);
 
   const managers = await db.user.findMany({
     where: { restaurantId: actor.restaurantId, role: { in: MANAGERS }, isActive: true, pinHash: { not: null } },
@@ -42,12 +40,11 @@ export async function approve(actor: Actor, pin: string | undefined): Promise<st
   if (managers.length === 0) throw new OrderError("No manager has set an approval PIN yet. Ask the owner to set one in Staff.");
   for (const m of managers) {
     if (await bcrypt.compare(pin, m.pinHash!)) {
-      failures.delete(actor.userId);
+      await db.authAttempt.create({ data: { key, success: true } });
       return m.name;
     }
   }
-  const count = (f?.count ?? 0) + 1;
-  failures.set(actor.userId, { count, until: count >= MAX_FAILURES ? Date.now() + LOCK_MS : 0 });
+  await db.authAttempt.create({ data: { key, success: false } });
   throw new OrderError("Wrong PIN");
 }
 

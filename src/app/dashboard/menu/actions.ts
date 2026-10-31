@@ -68,6 +68,7 @@ const itemSchema = z.object({
   isAvailable: z.boolean(),
   isBestseller: z.boolean(),
   spiceLevel: z.coerce.number().int().min(0).max(3),
+  stationId: z.string().optional().default(""),
   prepTimeMinutes: z.union([z.literal(""), z.coerce.number().int().min(1).max(240)]).optional().default(""),
   variants: z.array(z.object({ name: z.string().trim().min(1, "Variant name is required").max(40), price: money })).max(10),
   addonGroups: z
@@ -100,6 +101,7 @@ export async function saveItem(input: ItemInput): Promise<FormState> {
 
   const category = await db.category.findFirst({ where: { id: d.categoryId, restaurantId } });
   if (!category) return { error: "Category not found" };
+  if (d.stationId && !(await db.kitchenStation.findFirst({ where: { id: d.stationId, restaurantId } }))) return { error: "Kitchen station not found" };
 
   const fields = {
     categoryId: d.categoryId,
@@ -112,6 +114,7 @@ export async function saveItem(input: ItemInput): Promise<FormState> {
     isAvailable: d.isAvailable,
     isBestseller: d.isBestseller,
     spiceLevel: d.spiceLevel,
+    stationId: d.stationId || null,
     prepTimeMinutes: d.prepTimeMinutes === "" ? null : d.prepTimeMinutes,
   };
   const nested = {

@@ -23,6 +23,7 @@ export interface ItemFormValues {
   isAvailable: boolean;
   isBestseller: boolean;
   spiceLevel: string;
+  stationId: string;
   prepTimeMinutes: string;
   variants: Variant[];
   addonGroups: AddonGroup[];
@@ -32,10 +33,12 @@ export function ItemForm({
   initial,
   categories,
   defaultGstRate,
+  stations,
 }: {
   initial: ItemFormValues;
   categories: { id: string; name: string }[];
   defaultGstRate: string;
+  stations: { id: string; name: string }[];
 }) {
   const [v, setV] = useState(initial);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +113,18 @@ export function ItemForm({
               <option value="3">🌶️🌶️🌶️ Hot</option>
             </Select>
           </Field>
+          {stations.length > 0 && (
+            <Field label="Kitchen station" hint="Leave as category default unless this dish is made elsewhere">
+              <Select value={v.stationId} onChange={(e) => set("stationId", e.target.value)}>
+                <option value="">Same as category</option>
+                {stations.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
           <Field label="Prep time (minutes)">
             <Input type="number" min={1} max={240} value={v.prepTimeMinutes} onChange={(e) => set("prepTimeMinutes", e.target.value)} />
           </Field>

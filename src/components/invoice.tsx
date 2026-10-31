@@ -1,6 +1,7 @@
 import type { Order, OrderItem, Payment, Restaurant } from "@prisma/client";
 import { formatINR, toPaise } from "@/lib/gst";
 import { orderBill } from "@/lib/order-bill";
+import { gstinState } from "@/lib/gstin";
 
 type FullOrder = Order & { items: OrderItem[]; payments: Payment[] };
 
@@ -47,8 +48,18 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
                 : "Takeaway"}{" "}
           · Order #{order.orderNumber}
         </p>
-        {order.customerName && <p>Customer: {order.customerName}</p>}
-        {order.customerPhone && <p>Mobile: {order.customerPhone}</p>}
+        {order.buyerGstin ? (
+          <div className="mt-1 border-t border-dashed border-black pt-1">
+            <p className="font-semibold">Billed to: {order.buyerName}</p>
+            <p>GSTIN: {order.buyerGstin}</p>
+            {order.buyerAddress && <p>{order.buyerAddress}</p>}
+          </div>
+        ) : (
+          <>
+            {order.customerName && <p>Customer: {order.customerName}</p>}
+            {order.customerPhone && <p>Mobile: {order.customerPhone}</p>}
+          </>
+        )}
       </div>
 
       <table className="w-full border-y border-dashed border-black">
@@ -101,7 +112,8 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
 
       {taxInvoice && (
         <p className="mt-1 text-[11px]">
-          SAC {SAC_RESTAURANT} · Restaurant service{restaurant.state && ` · Place of supply: ${restaurant.state}`}
+          SAC {SAC_RESTAURANT} · Restaurant service
+          {(restaurant.state || (restaurant.gstin && gstinState(restaurant.gstin))) && ` · Place of supply: ${restaurant.state || gstinState(restaurant.gstin!)}`}
         </p>
       )}
 

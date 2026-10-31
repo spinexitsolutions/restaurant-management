@@ -26,7 +26,9 @@ import {
   mergeInto,
   rejectKot,
   reopenOrder,
+  reprintOrder,
   sendKot,
+  setBuyer,
   setCustomer,
   splitBill,
   takePayment,
@@ -165,6 +167,26 @@ export function OrderWorkspace(props: {
             {order?.invoiceNumber && ` · ${order.invoiceNumber}`}
           </p>
         </div>
+        {order && order.kots.some((k) => k.status === "ACCEPTED") && (
+          <button
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ring-stone-300 hover:bg-stone-50"
+            title="Print KOTs again"
+            disabled={pending}
+            onClick={() => act(() => reprintOrder(order.id, "KOT"), () => setNotice("KOT sent to the kitchen printer again."))}
+          >
+            <Printer size={14} /> <span className="hidden sm:inline">KOT</span>
+          </button>
+        )}
+        {order && (status === "BILLED" || status === "PAID") && (
+          <button
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium ring-1 ring-stone-300 hover:bg-stone-50"
+            title="Print the bill on the thermal printer"
+            disabled={pending}
+            onClick={() => act(() => reprintOrder(order.id, "BILL"), () => setNotice("Bill sent to the printer."))}
+          >
+            <Printer size={14} /> <span className="hidden sm:inline">Bill</span>
+          </button>
+        )}
         {order && (status === "OPEN" || status === "BILLED") && (
           <TableActions order={order} floorTables={floorTables} canBill={canBill} onAct={act} />
         )}
@@ -401,6 +423,7 @@ function BillingPanel({
     return (
       <div className="space-y-3 rounded-lg ring-1 ring-stone-200 p-3">
         {!order.channel && <CustomerBox order={order} restaurant={restaurant} pending={pending} onAct={onAct} />}
+        {!order.channel && <BuyerBox order={order} pending={pending} onAct={onAct} />}
         {order.channel && <p className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">No GST on this bill: Zomato/Swiggy pay GST on restaurant orders (Section 9(5)).</p>}
         <p className="text-sm font-semibold">Discount</p>
         <div className="flex gap-2">
@@ -704,6 +727,59 @@ function CustomerBox({ order, restaurant, pending, onAct }: { order: OrderView; 
           {order.points.redeemed} points = {formatINR(order.points.value)} off
         </p>
       )}
+    </div>
+  );
+}
+
+function BuyerBox({ order, pending, onAct }: { order: OrderView; pending: boolean; onAct: Act }) {
+  const saved = order.buyer;
+  const remembered = order.customer?.gstin ? { gstin: order.customer.gstin, name: order.customer.businessName, address: order.customer.businessAddress } : null;
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({
+    gstin: saved?.gstin ?? remembered?.gstin ?? "",
+    name: saved?.name ?? remembered?.name ?? "",
+    address: saved?.address ?? remembered?.address ?? "",
+  });
+
+  if (saved && !open) {
+    return (
+      <div className="flex items-start justify-between gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm">
+        <span>
+          <span className="font-semibold">B2B:</span> {saved.name}
+          <span className="block text-xs text-stone-600">GSTIN {saved.gstin}</span>
+        </span>
+        <span className="flex gap-2 text-xs">
+          <button className="text-stone-600 hover:underline" onClick={() => setOpen(true)}>
+            Edit
+          </button>
+          <button className="text-red-600 hover:underline" disabled={pending} onClick={() => onAct(() => setBuyer(order.id, "", "", ""))}>
+            Remove
+          </button>
+        </span>
+      </div>
+    );
+  }
+  if (!open) {
+    return (
+      <button className="text-left text-xs font-medium text-brand-700 hover:underline" onClick={() => setOpen(true)}>
+        + Business bill (add customer&apos;s GSTIN){remembered && ` · ${remembered.name}`}
+      </button>
+    );
+  }
+  return (
+    <div className="space-y-2 rounded-lg p-3 ring-1 ring-blue-200">
+      <p className="text-sm font-semibold">Business (B2B) bill</p>
+      <Input placeholder="Buyer GSTIN" value={form.gstin} maxLength={15} className="uppercase" onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })} />
+      <Input placeholder="Registered business name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <Input placeholder="Billing address (optional)" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+      <div className="flex gap-2">
+        <Button size="sm" disabled={pending} onClick={() => onAct(() => setBuyer(order.id, form.gstin, form.name, form.address), () => setOpen(false))}>
+          Save
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+      </div>
     </div>
   );
 }

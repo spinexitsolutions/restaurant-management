@@ -44,6 +44,8 @@ export async function loadReportOrders(restaurantId: string, range: Range): Prom
     tableName: o.tableName,
     type: o.type,
     channel: o.channel,
+    buyerGstin: o.buyerGstin,
+    buyerName: o.buyerName,
     waiterName: o.waiter?.name ?? null,
     gstEnabled: o.gstEnabled ?? false,
     gstMode: o.gstMode ?? "EXCLUSIVE",

@@ -6,6 +6,7 @@ import { requireRestaurantSession } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { UPI_ID_PATTERN, verifyRazorpayKeys } from "@/lib/payments";
+import { gstinError } from "@/lib/gstin";
 
 export type FormState = { error?: string; ok?: string } | null;
 
@@ -37,12 +38,17 @@ export async function saveProfile(_: FormState, formData: FormData): Promise<For
   return done("Restaurant details saved");
 }
 
-// 15-character GSTIN: 2-digit state code, PAN, entity number, Z, checksum.
-const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
-
 const gstSchema = z.object({
   gstEnabled: checkbox,
-  gstin: z.string().trim().toUpperCase().transform((s) => s || null).refine((s) => !s || GSTIN_PATTERN.test(s), "GSTIN looks invalid (15 characters, e.g. 27ABCDE1234F1Z5)"),
+  gstin: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .transform((s) => s || null)
+    .superRefine((s, ctx) => {
+      const err = s && gstinError(s);
+      if (err) ctx.addIssue({ code: "custom", message: err });
+    }),
   gstMode: z.enum(["INCLUSIVE", "EXCLUSIVE"]),
   defaultGstRate: z.coerce.number().min(0).max(28),
   serviceChargeEnabled: checkbox,

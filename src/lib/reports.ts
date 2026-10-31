@@ -10,6 +10,8 @@ export interface ReportOrder {
   tableName: string | null;
   type: string;
   channel: string | null;
+  buyerGstin: string | null;
+  buyerName: string | null;
   waiterName: string | null;
   gstEnabled: boolean;
   gstMode: GstMode;

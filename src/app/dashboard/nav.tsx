@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CreditCard, Sparkles, Store, CalendarDays, Clock, Contact, Package, ChefHat, ClipboardList, LayoutDashboard, Wallet, QrCode, Receipt, Settings, UserRound, Users, UtensilsCrossed } from "lucide-react";
+import { BarChart3, Printer, CreditCard, Sparkles, Store, CalendarDays, Clock, Contact, Package, ChefHat, ClipboardList, LayoutDashboard, Wallet, QrCode, Receipt, Settings, UserRound, Users, UtensilsCrossed } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ICONS = { CreditCard, Sparkles, Store, CalendarDays, Clock, Contact, Package, BarChart3, Wallet, ClipboardList, LayoutDashboard, UtensilsCrossed, QrCode, Users, Settings, Receipt, ChefHat, UserRound };
+const ICONS = { Printer, CreditCard, Sparkles, Store, CalendarDays, Clock, Contact, Package, BarChart3, Wallet, ClipboardList, LayoutDashboard, UtensilsCrossed, QrCode, Users, Settings, Receipt, ChefHat, UserRound };
 
 export interface NavItem {
   href: string;

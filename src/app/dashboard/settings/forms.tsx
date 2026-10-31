@@ -135,7 +135,7 @@ export function GstForm({
         <Toggle name="gstEnabled" label="I am GST registered (charge GST on bills)" defaultChecked={r.gstEnabled} onChange={(v) => setPreview((p) => ({ ...p, gstEnabled: v }))} />
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="GSTIN">
-            <Input name="gstin" defaultValue={r.gstin} maxLength={15} placeholder="27ABCDE1234F1Z5" className="uppercase" />
+            <Input name="gstin" defaultValue={r.gstin} maxLength={15} placeholder="27ABCDE1234F1Z0" className="uppercase" />
           </Field>
           <Field label="Menu prices are">
             <Select name="gstMode" defaultValue={r.gstMode} onChange={(e) => setPreview((p) => ({ ...p, mode: e.target.value as "INCLUSIVE" | "EXCLUSIVE" }))}>
