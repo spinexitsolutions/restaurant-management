@@ -1,15 +1,19 @@
 import Link from "next/link";
 import { logout } from "../(auth)/actions";
 import { requireSuperAdmin } from "@/server/admin";
+import { LogoMark } from "@/components/logo";
 import { APP_NAME } from "@/lib/utils";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireSuperAdmin();
   return (
     <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200 bg-white">
+      <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-6 py-3">
-          <span className="font-semibold">{APP_NAME} · Admin</span>
+          <span className="flex items-center gap-2.5 font-semibold">
+            <LogoMark size={28} /> {APP_NAME}
+            <span className="rounded-md bg-stone-900 px-1.5 py-0.5 text-[11px] font-semibold text-white">Admin</span>
+          </span>
           <nav className="flex gap-1 text-sm">
             <Link href="/admin" className="rounded-lg px-3 py-1.5 hover:bg-stone-100">
               Restaurants

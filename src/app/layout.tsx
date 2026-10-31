@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/noto-sans-devanagari";
 import "./globals.css";
 import { APP_NAME } from "@/lib/utils";
 import { ServiceWorkerRegister } from "@/components/sw-register";
@@ -13,7 +15,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#ea580c",
+  themeColor: "#2554eb",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -26,7 +26,7 @@ export function PlanButton({ code, label }: { code: string; label: string }) {
         name: d.name,
         description: d.description,
         prefill: { email: d.email ?? undefined, contact: d.phone ?? undefined },
-        theme: { color: "#ea580c" },
+        theme: { color: "#2554eb" },
         handler: async (resp: CheckoutResponse) => {
           const done = await confirmSubscription(resp);
           setMsg(done.ok ? { ok: "Payment received. Thank you!" } : { error: done.error });

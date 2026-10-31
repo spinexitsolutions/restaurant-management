@@ -21,14 +21,14 @@ export function LanguagePicker() {
   const { lang, t } = useContext(I18nContext);
   const [pending, start] = useTransition();
   return (
-    <label className="flex items-center gap-2 text-sm text-stone-600">
-      <Languages size={16} aria-hidden />
+    <label className="relative flex items-center">
+      <Languages size={15} aria-hidden className="pointer-events-none absolute left-3 text-stone-400" />
       <span className="sr-only">{t("nav.language")}</span>
       <select
         value={lang}
         disabled={pending}
         onChange={(e) => start(() => setLanguage(e.target.value))}
-        className="rounded-md border border-stone-300 bg-white px-2 py-1 text-sm"
+        className="h-9 w-full rounded-lg border border-stone-300 bg-white pr-3 pl-9 text-[13px] text-stone-700 shadow-xs hover:border-stone-400"
         aria-label={t("nav.language")}
       >
         {Object.entries(LANGUAGES).map(([code, name]) => (

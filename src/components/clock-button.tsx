@@ -15,9 +15,12 @@ export async function ClockButton({ userId, compact, t = translator("en") }: { u
         </p>
       )}
       <button
-        className={`rounded-lg px-3 py-1.5 text-sm font-medium ${open ? "bg-stone-900 text-white" : "bg-green-600 text-white"} ${compact ? "w-full" : ""}`}
+        className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3 text-[13px] font-medium shadow-sm transition-colors ${
+          open ? "bg-white text-stone-700 ring-1 ring-stone-300 ring-inset hover:bg-stone-50" : "bg-emerald-600 text-white hover:bg-emerald-700"
+        } ${compact ? "w-full" : ""}`}
         title={open ? t("clock.onShift", { time: since! }) : undefined}
       >
+        {open && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
         {open ? (compact ? t("clock.outSince", { time: since! }) : t("clock.out")) : t("clock.in")}
       </button>
     </form>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import QRCode from "qrcode";
-import { ArrowLeft, ArrowRightLeft, Check, ChefHat, Combine, MessageCircle, Minus, Plus, Printer, Split, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Check, ChefHat, Combine, Flame, MessageCircle, Minus, Plus, Printer, Split, X } from "lucide-react";
 import { Badge, Button, FoodTypeIcon, Input, Select } from "@/components/ui";
 import { MenuPicker, type PickerCategory } from "@/components/menu-picker";
 import { PinDialog } from "@/components/pin-dialog";
@@ -850,7 +850,7 @@ function FireBar({ order, pending, onAct }: { order: OrderView; pending: boolean
         {count} {COURSES[course].toLowerCase()} item{count === 1 ? "" : "s"} waiting
       </span>
       <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={pending} onClick={() => onAct(() => fireCourse(order.id))}>
-        🔥 Fire {COURSES[course]}
+        <Flame size={14} /> Fire {COURSES[course]}
       </Button>
     </div>
   );
@@ -872,7 +872,7 @@ function AutoUpiQr({ orderId, amount }: { orderId: string; amount: number }) {
     return () => clearInterval(id);
   }, [qr, status]);
 
-  if (status === "paid" && qr) return <p className="rounded-lg bg-green-50 px-3 py-3 text-center font-semibold text-green-800">✓ {formatINR(qr.amount)} received on UPI</p>;
+  if (status === "paid" && qr) return <p className="flex items-center justify-center gap-2 rounded-lg bg-green-50 px-3 py-3 text-center font-semibold text-green-800"><Check size={16} /> {formatINR(qr.amount)} received on UPI</p>;
   if (qr && status === "waiting")
     return (
       <div className="text-center">

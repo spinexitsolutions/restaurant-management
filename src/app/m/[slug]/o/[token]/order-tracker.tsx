@@ -91,7 +91,7 @@ export function OrderTracker({
         <p className="text-sm opacity-90">{restaurant.name}</p>
         <h1 className="text-2xl font-bold">
           {order.status === "PAID"
-            ? "Thank you! 🙏"
+            ? "Thank you"
             : order.status === "CANCELLED"
               ? "Order cancelled"
               : order.status === "BILLED"

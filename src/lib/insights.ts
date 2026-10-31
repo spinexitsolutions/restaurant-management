@@ -117,7 +117,7 @@ export function buildInsights(i: InsightInput): Insight[] {
       title: `Customers rate ${disliked.length} dish${disliked.length > 1 ? "es" : ""} poorly`,
       detail: `${disliked
         .slice(0, 4)
-        .map((r) => `${r.name} (${r.average.toFixed(1)}★, ${r.count} ratings)`)
+        .map((r) => `${r.name} (${r.average.toFixed(1)}/5, ${r.count} ratings)`)
         .join(", ")}. Read the comments below and talk to the kitchen.`,
     });
   }

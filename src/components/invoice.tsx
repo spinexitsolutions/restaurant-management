@@ -131,7 +131,7 @@ export function Invoice({ order, restaurant }: { order: FullOrder; restaurant: R
         </div>
       )}
       {order.pointsEarned > 0 && <p className="mt-2 text-center">You earned {order.pointsEarned} loyalty points on this bill!</p>}
-      <p className="mt-3 text-center">Thank you! Visit again 🙏</p>
+      <p className="mt-3 text-center">Thank you for dining with us. Please visit again.</p>
     </div>
   );
 }

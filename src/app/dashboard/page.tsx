@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, Circle, ExternalLink } from "lucide-react";
+import { CalendarDays, Cake, CheckCircle2, Circle, ExternalLink, PackageX } from "lucide-react";
 import { requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getOnlinePaymentMode } from "@/lib/payments";
@@ -43,7 +43,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="max-w-5xl">
-      <PageHeader title={`Namaste, ${session.name.split(" ")[0]} 👋`} description="Here's how your restaurant is set up." />
+      <PageHeader title={`Welcome back, ${session.name.split(" ")[0]}`} description="Here's how your restaurant is set up." />
       {denied && (
         <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">You don&apos;t have access to that page.</p>
       )}
@@ -55,24 +55,33 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {(lowStock.length > 0 || bookings.length > 0 || celebrations > 0) && (
         <div className="mb-6 grid gap-3 md:grid-cols-3">
           {lowStock.length > 0 && isManager && (
-            <Link href="/dashboard/inventory" className="rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
-              <p className="font-semibold">{lowStock.length} ingredient(s) running low</p>
-              <p className="truncate">{lowStock.map((i) => i.name).join(", ")}</p>
+            <Link href="/dashboard/inventory" className="flex items-start gap-3 rounded-xl border border-stone-200/80 bg-white p-4 text-sm shadow-card transition-colors hover:border-stone-300">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600"><PackageX size={18} /></span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-stone-900">{lowStock.length} ingredient(s) running low</span>
+                <span className="block truncate text-stone-500">{lowStock.map((i) => i.name).join(", ")}</span>
+              </span>
             </Link>
           )}
           {bookings.length > 0 && (
-            <Link href="/dashboard/reservations" className="rounded-xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-200">
-              <p className="font-semibold">{bookings.length} booking(s) today</p>
-              <p>
-                {bookings.reduce((s, b) => s + b.partySize, 0)} guests
-                {bookings.some((b) => b.status === "REQUESTED") && " · some need confirming"}
-              </p>
+            <Link href="/dashboard/reservations" className="flex items-start gap-3 rounded-xl border border-stone-200/80 bg-white p-4 text-sm shadow-card transition-colors hover:border-stone-300">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600"><CalendarDays size={18} /></span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-stone-900">{bookings.length} booking(s) today</span>
+                <span className="block text-stone-500">
+                  {bookings.reduce((s, b) => s + b.partySize, 0)} guests
+                  {bookings.some((b) => b.status === "REQUESTED") && " · some need confirming"}
+                </span>
+              </span>
             </Link>
           )}
           {celebrations > 0 && session.role !== "WAITER" && session.role !== "CHEF" && (
-            <Link href="/dashboard/customers" className="rounded-xl bg-pink-50 p-4 text-sm text-pink-900 ring-1 ring-pink-200">
-              <p className="font-semibold">🎂 {celebrations} birthday/anniversary this week</p>
-              <p>Send them an offer on WhatsApp</p>
+            <Link href="/dashboard/customers" className="flex items-start gap-3 rounded-xl border border-stone-200/80 bg-white p-4 text-sm shadow-card transition-colors hover:border-stone-300">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><Cake size={18} /></span>
+              <span className="min-w-0">
+                <span className="block font-semibold text-stone-900">{celebrations} birthday/anniversary this week</span>
+                <span className="block text-stone-500">Send them an offer on WhatsApp</span>
+              </span>
             </Link>
           )}
         </div>
@@ -86,8 +95,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           ["Staff", staffCount],
         ].map(([label, value]) => (
           <Card key={label as string} className="p-4">
-            <p className="text-sm text-stone-500">{label}</p>
-            <p className="mt-1 text-2xl font-semibold">{value}</p>
+            <p className="text-xs font-medium tracking-wide text-stone-500 uppercase">{label}</p>
+            <p className="mt-1.5 text-2xl font-semibold tracking-tight">{value}</p>
           </Card>
         ))}
       </div>

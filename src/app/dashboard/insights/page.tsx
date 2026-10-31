@@ -1,4 +1,4 @@
-import { AlertTriangle, Info, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, Info, Star, TrendingDown, TrendingUp } from "lucide-react";
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { formatINR } from "@/lib/gst";
 import { cn } from "@/lib/utils";
@@ -66,7 +66,7 @@ export default async function InsightsPage() {
           <ul className="space-y-2 text-sm">
             {data.comments.map((c, i) => (
               <li key={i} className="flex gap-3">
-                <span className={cn("shrink-0 rounded px-1.5 text-xs font-semibold text-white", c.rating >= 4 ? "bg-green-700" : c.rating >= 3 ? "bg-amber-500" : "bg-red-600")}>{c.rating}★</span>
+                <span className={cn("inline-flex h-fit shrink-0 items-center gap-0.5 rounded px-1.5 text-xs font-semibold text-white", c.rating >= 4 ? "bg-green-700" : c.rating >= 3 ? "bg-amber-500" : "bg-red-600")}>{c.rating} <Star size={10} className="fill-current" /></span>
                 <span>
                   <span className="font-medium">{c.menuItem.name}:</span> {c.comment}
                   <span className="block text-xs text-stone-400">{c.createdAt.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</span>

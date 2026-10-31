@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Minus, Plus, X } from "lucide-react";
+import { Check, Minus, Plus, X } from "lucide-react";
 import { buildCartLine, validateAddons, type CartLine, type MenuItemData } from "@/lib/cart";
 
 // Bottom sheet + item customisation (variant, add-ons, quantity), shared by the customer
@@ -128,8 +128,8 @@ function GroupProgress({ chosen, min, max }: { chosen: number; min: number; max:
   if (min === 0) return chosen ? <span className="text-xs font-normal text-stone-500">{chosen} added</span> : null;
   const done = chosen >= min;
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${done ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
-      {done ? "✓ " : ""}
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${done ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"}`}>
+      {done && <Check size={12} strokeWidth={3} />}
       {chosen}/{min === max ? min : `${min}+`} chosen
     </span>
   );

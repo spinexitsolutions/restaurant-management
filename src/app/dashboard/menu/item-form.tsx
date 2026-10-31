@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
 import { Button, Card, Field, FormMessage, Input, Select, Textarea } from "@/components/ui";
 import { saveItem, type ItemInput } from "./actions";
 import { ImageUpload } from "@/components/image-upload";
@@ -109,9 +109,9 @@ export function ItemForm({
           </Field>
           <Field label="Food type">
             <Select value={v.foodType} onChange={(e) => set("foodType", e.target.value as ItemFormValues["foodType"])}>
-              <option value="VEG">🟢 Veg</option>
-              <option value="NON_VEG">🔴 Non-veg</option>
-              <option value="EGG">🟡 Contains egg</option>
+              <option value="VEG">Veg</option>
+              <option value="NON_VEG">Non-veg</option>
+              <option value="EGG">Contains egg</option>
             </Select>
           </Field>
           <Field label="GST rate (%)" hint={`Leave blank to use default (${defaultGstRate}%)`}>
@@ -122,9 +122,9 @@ export function ItemForm({
           <Field label="Spice level">
             <Select value={v.spiceLevel} onChange={(e) => set("spiceLevel", e.target.value)}>
               <option value="0">Not spicy</option>
-              <option value="1">🌶️ Mild</option>
-              <option value="2">🌶️🌶️ Medium</option>
-              <option value="3">🌶️🌶️🌶️ Hot</option>
+              <option value="1">Mild</option>
+              <option value="2">Medium</option>
+              <option value="3">Hot</option>
             </Select>
           </Field>
           {stations.length > 0 && (
@@ -195,9 +195,9 @@ export function ItemForm({
                   key={o.id}
                   type="button"
                   onClick={() => set("pairsWith", on ? v.pairsWith.filter((x) => x !== o.id) : [...v.pairsWith, o.id].slice(0, 6))}
-                  className={`rounded-full px-3 py-1 text-sm ring-1 ${on ? "bg-brand-50 font-medium text-brand-700 ring-brand-500" : "ring-stone-200"}`}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm ring-1 ${on ? "bg-brand-50 font-medium text-brand-700 ring-brand-500" : "ring-stone-200"}`}
                 >
-                  {on ? "✓ " : ""}
+                  {on && <Check size={13} strokeWidth={2.5} />}
                   {o.name}
                 </button>
               );

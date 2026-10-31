@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -53,9 +54,11 @@ export default async function BillingPage() {
               </p>
               {plan.note && <p className="mt-2 text-sm font-medium text-green-700">{plan.note}</p>}
               <ul className="my-4 space-y-1 text-sm text-stone-600">
-                <li>✓ All features, unlimited orders</li>
-                <li>✓ Unlimited staff and tables</li>
-                <li>✓ Adds {plan.months} month{plan.months > 1 ? "s" : ""} to your plan</li>
+                {["All features, unlimited orders", "Unlimited staff and tables", `Adds ${plan.months} month${plan.months > 1 ? "s" : ""} to your plan`].map((f) => (
+                  <li key={f} className="flex items-center gap-2">
+                    <Check size={15} className="text-brand-600" /> {f}
+                  </li>
+                ))}
               </ul>
               <div className="mt-auto">
                 {online ? (

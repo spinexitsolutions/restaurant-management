@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTransition } from "react";
-import { Bell, BellRing, Droplets, Receipt, Volume2, VolumeX } from "lucide-react";
+import { Bell, BellRing, CheckCircle2, Droplets, Flame, Receipt, Volume2, VolumeX } from "lucide-react";
 import { formatINR } from "@/lib/gst";
 import { cn } from "@/lib/utils";
 import { beep } from "@/hooks/use-live";
@@ -52,12 +52,12 @@ export function FloorAlerts({ tables }: { tables: FloorTable[] }) {
       ))}
       {ready.map((tb) => (
         <Link key={`r${tb.id}`} href={`/dashboard/orders/${tb.order!.id}`} className="flex items-center gap-3 rounded-lg bg-green-100 px-4 py-3 text-sm font-medium text-green-900">
-          🍽️ {t("floor.ready", { name: tb.name, count: tb.order!.readyCount })}
+          <CheckCircle2 size={18} /> {t("floor.ready", { name: tb.name, count: tb.order!.readyCount })}
         </Link>
       ))}
       {fire.map((tb) => (
         <Link key={`f${tb.id}`} href={`/dashboard/orders/${tb.order!.id}`} className="flex items-center gap-3 rounded-lg bg-purple-100 px-4 py-3 text-sm font-medium text-purple-900">
-          🔥 {t("floor.fire", { name: tb.name, count: tb.order!.heldCount })}
+          <Flame size={18} /> {t("floor.fire", { name: tb.name, count: tb.order!.heldCount })}
         </Link>
       ))}
       {requests.map((r) => {
@@ -112,7 +112,7 @@ function TableTile({ table }: { table: FloorTable }) {
       href={o ? `/dashboard/orders/${o.id}` : `/dashboard/orders/new?table=${table.id}`}
       className={cn("relative flex aspect-square flex-col items-center justify-center rounded-xl p-2 text-center ring-2 transition active:scale-95", styles[state])}
     >
-      {(table.requests.length > 0 || o?.pendingApproval || o?.readyCount) && (
+      {(table.requests.length > 0 || !!o?.pendingApproval || !!o?.readyCount) && (
         <span className="absolute top-2 right-2 h-3 w-3 animate-pulse rounded-full bg-red-500" />
       )}
       <span className="text-xl font-bold">{table.name}</span>
@@ -160,8 +160,9 @@ export function OtherOrders({ orders }: { orders: FloorOrder[] }) {
 export function PickupStrip({ tokens }: { tokens: { preparing: BoardToken[]; ready: BoardToken[] } }) {
   const t = useT();
   const [pending, start] = useTransition();
+  if (!tokens.ready.length && !tokens.preparing.length) return null;
   return (
-    <div className="mb-6 rounded-xl bg-green-50 p-4 ring-1 ring-green-200">
+    <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-semibold text-green-900">{t("token.ready")}</h2>
         <span className="text-sm text-stone-600">{t("token.preparing", { count: tokens.preparing.length })}</span>

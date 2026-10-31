@@ -81,7 +81,7 @@ export function MenuPicker({ categories, onAdd }: { categories: PickerCategory[]
         {items.length === 0 && <p className="col-span-full py-10 text-center text-sm text-stone-500">{t("menu.noItems")}</p>}
       </div>
       {customizing && (
-        <div style={{ "--theme": "#ea580c" } as React.CSSProperties}>
+        <div style={{ "--theme": "#2554eb" } as React.CSSProperties}>
           <Customizer
             item={customizing}
             onClose={() => setCustomizing(null)}

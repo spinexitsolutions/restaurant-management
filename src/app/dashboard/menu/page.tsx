@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Upload } from "lucide-react";
+import { ImageIcon, Plus, Star, Upload } from "lucide-react";
 import { MANAGE_ROLES, requireRestaurantSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, FoodTypeIcon, PageHeader } from "@/components/ui";
@@ -85,7 +85,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={item.imageUrl} alt="" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
                   ) : (
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-2xl">🍽️</div>
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-400"><ImageIcon size={22} /></div>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -103,7 +103,7 @@ export default async function MenuPage({ searchParams }: { searchParams: Promise
                       {item.isKidsFriendly && <Badge>Kids</Badge>}
                       {ratingOf.get(item.id) && (
                         <Badge tone={(ratingOf.get(item.id)!._avg.rating ?? 0) >= 4 ? "green" : (ratingOf.get(item.id)!._avg.rating ?? 0) >= 3 ? "amber" : "red"}>
-                          {(ratingOf.get(item.id)!._avg.rating ?? 0).toFixed(1)}★ ({ratingOf.get(item.id)!._count})
+                          <Star size={11} className="fill-current" /> {(ratingOf.get(item.id)!._avg.rating ?? 0).toFixed(1)} ({ratingOf.get(item.id)!._count})
                         </Badge>
                       )}
                     </div>

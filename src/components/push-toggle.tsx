@@ -13,7 +13,7 @@ function keyBytes(base64: string) {
 type State = "loading" | "unsupported" | "blocked" | "off" | "on" | "failed";
 
 /** Turns phone alerts on/off for this device. Hidden when the server has no VAPID keys. */
-export function PushToggle({ publicKey }: { publicKey: string | null }) {
+export function PushToggle({ publicKey, compact }: { publicKey: string | null; compact?: boolean }) {
   const t = useT();
   const [state, setState] = useState<State>("loading");
   const [pending, start] = useTransition();
@@ -30,6 +30,14 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
   }, [publicKey]);
 
   if (!publicKey || state === "loading") return null;
+  if (compact && (state === "unsupported" || state === "blocked")) {
+    const msg = t(state === "blocked" ? "push.blocked" : "push.unsupported");
+    return (
+      <span title={msg} aria-label={msg} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-stone-300 ring-1 ring-stone-200 ring-inset">
+        <BellOff size={16} />
+      </span>
+    );
+  }
   if (state === "unsupported" || state === "blocked") {
     return <p className="text-xs text-stone-500">{t(state === "blocked" ? "push.blocked" : "push.unsupported")}</p>;
   }
@@ -61,12 +69,29 @@ export function PushToggle({ publicKey }: { publicKey: string | null }) {
     <button
       onClick={toggle}
       disabled={pending}
-      className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium ring-1 ${state === "on" ? "bg-green-50 text-green-800 ring-green-300" : "bg-white text-stone-700 ring-stone-300"}`}
+      className={`flex h-9 w-full items-center gap-2 rounded-lg px-3 text-[13px] font-medium shadow-xs ring-1 ring-inset ${state === "on" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-white text-stone-700 ring-stone-300 hover:bg-stone-50"}`}
     >
       {state === "on" ? <BellRing size={16} /> : <BellOff size={16} />}
       {state === "on" ? t("push.on") : t("push.enable")}
     </button>
   );
+  if (compact) {
+    const label = failed ? t("push.failed") : state === "on" ? t("push.on") : t("push.enable");
+    return (
+      <button
+        onClick={toggle}
+        disabled={pending}
+        title={label}
+        aria-label={label}
+        aria-pressed={state === "on"}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg shadow-xs ring-1 ring-inset ${
+          state === "on" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : failed ? "bg-red-50 text-red-600 ring-red-200" : "bg-white text-stone-500 ring-stone-300 hover:bg-stone-50"
+        }`}
+      >
+        {state === "on" ? <BellRing size={16} /> : <BellOff size={16} />}
+      </button>
+    );
+  }
   return failed ? (
     <div className="space-y-1">
       {button}

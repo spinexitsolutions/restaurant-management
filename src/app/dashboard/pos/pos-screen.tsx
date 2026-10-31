@@ -42,14 +42,14 @@ export function PosScreen({
           <Link href="/dashboard/orders/new?type=TAKEAWAY" className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700">
             <ShoppingBag size={16} /> {t("floor.takeaway")}
           </Link>
-          <Link href="/dashboard/orders/new?type=DELIVERY" className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium ring-1 ring-stone-300 hover:bg-stone-50">
+          <Link href="/dashboard/orders/new?type=DELIVERY" className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium shadow-sm ring-1 ring-stone-300 ring-inset hover:bg-stone-50">
             <Bike size={16} /> {t("floor.delivery")}
           </Link>
-          <Link href="/dashboard/orders/new?channel=ZOMATO" className="inline-flex h-10 items-center rounded-lg bg-[#E23744] px-4 text-sm font-semibold text-white">
-            Zomato
+          <Link href="/dashboard/orders/new?channel=ZOMATO" className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium shadow-sm ring-1 ring-stone-300 ring-inset hover:bg-stone-50">
+            <span className="h-2 w-2 rounded-full bg-[#E23744]" /> Zomato
           </Link>
-          <Link href="/dashboard/orders/new?channel=SWIGGY" className="inline-flex h-10 items-center rounded-lg bg-[#FC8019] px-4 text-sm font-semibold text-white">
-            Swiggy
+          <Link href="/dashboard/orders/new?channel=SWIGGY" className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-4 text-sm font-medium shadow-sm ring-1 ring-stone-300 ring-inset hover:bg-stone-50">
+            <span className="h-2 w-2 rounded-full bg-[#FC8019]" /> Swiggy
           </Link>
         </div>
       </div>

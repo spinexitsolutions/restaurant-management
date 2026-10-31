@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { History, Plus, Star, X } from "lucide-react";
+import { Flame, History, Plus, Star, X } from "lucide-react";
 import { FoodTypeIcon } from "@/components/ui";
 import { Sheet } from "@/components/item-customizer";
 import { buildCartLine, type CartLine, type MenuItemData } from "@/lib/cart";
@@ -86,10 +86,10 @@ export function ItemDetail({
       )}
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <FoodTypeIcon type={item.foodType} />
-        {item.isBestseller && <span className="text-xs font-semibold text-amber-600">★ Bestseller</span>}
+        {item.isBestseller && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600"><Star size={12} className="fill-current" /> Bestseller</span>}
         {item.isKidsFriendly && <span className="rounded bg-sky-100 px-1.5 text-xs font-semibold text-sky-800">Kids</span>}
         <RatingBadge rating={item.rating} />
-        {item.spiceLevel > 0 && <span className="text-sm">{"🌶️".repeat(item.spiceLevel)}</span>}
+        {item.spiceLevel > 0 && <span className="inline-flex text-red-600" title="Spice level">{Array.from({ length: item.spiceLevel }, (_, i) => <Flame key={i} size={13} strokeWidth={2.2} />)}</span>}
       </div>
       {item.description && <p className="mb-3 text-sm text-stone-600">{item.description}</p>}
       {video && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import QRCode from "qrcode";
-import { Minus, Plus, Share2, Star } from "lucide-react";
+import { Check, Minus, Plus, Share2, Star } from "lucide-react";
 import { formatINR } from "@/lib/gst";
 import { buildUpiLink, type OnlinePaymentMode } from "@/lib/payments";
 import { equalShare, itemsShare, normaliseShare } from "@/lib/split";
@@ -72,7 +72,7 @@ export function SplitPay({
         <ul className="space-y-0.5 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-900">
           {order.payments.map((p, i) => (
             <li key={i} className="flex justify-between">
-              <span>✓ {p.method === "RAZORPAY" ? "Paid online" : `Paid by ${p.method.toLowerCase()}`}</span>
+              <span className="inline-flex items-center gap-1.5"><Check size={14} /> {p.method === "RAZORPAY" ? "Paid online" : `Paid by ${p.method.toLowerCase()}`}</span>
               <span>{formatINR(p.amount)}</span>
             </li>
           ))}
@@ -225,7 +225,7 @@ export function RateDishes({ order, alreadyRated }: { order: OrderView; alreadyR
               order.publicToken,
               Object.entries(stars).map(([menuItemId, rating]) => ({ menuItemId, rating, comment: comment || undefined })),
             );
-            setResult(res.ok ? { ok: "Thank you for rating! 🙏" } : { error: res.error });
+            setResult(res.ok ? { ok: "Thank you for your feedback." } : { error: res.error });
           })
         }
         className="w-full rounded-lg bg-[var(--theme)] py-2.5 font-semibold text-white disabled:opacity-50"

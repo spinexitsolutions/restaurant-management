@@ -39,7 +39,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const winback = winbackReturned(campaign);
   const automatic = restaurant.winbackEnabled && !!restaurant.waWinbackTemplate && !!restaurant.waPhoneNumberId;
   const winbackText = (name: string | null) =>
-    `Hi ${name || "there"}, we miss you at ${restaurant.name}! Come back this week and enjoy ${restaurant.winbackOffer}. See you soon 🙏`;
+    `Hi ${name || "there"}, we miss you at ${restaurant.name}! Come back this week and enjoy ${restaurant.winbackOffer}. See you soon.`;
   const upcoming = withDates
     .flatMap((c) =>
       (

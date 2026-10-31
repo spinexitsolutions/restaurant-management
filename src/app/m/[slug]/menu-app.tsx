@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { Minus, Plus, Search, ShoppingBag } from "lucide-react";
+import { Flame, Minus, Plus, Search, ShoppingBag, Star } from "lucide-react";
 import { FoodTypeIcon } from "@/components/ui";
 import { Customizer, Sheet } from "@/components/item-customizer";
 import { addToCart, buildCartLine, buildWhatsAppOrderText, lineLabel, setQuantity, type CartLine, type MenuItemData } from "@/lib/cart";
@@ -312,7 +312,7 @@ function MenuItemRow({ item, qty, onAdd, onRemove, onOpen }: { item: MenuItemDat
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <FoodTypeIcon type={item.foodType} />
-          {item.isBestseller && <span className="text-xs font-semibold text-amber-600">★ Bestseller</span>}
+          {item.isBestseller && <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600"><Star size={12} className="fill-current" /> Bestseller</span>}
           {item.isKidsFriendly && <span className="rounded bg-sky-100 px-1.5 text-[11px] font-semibold text-sky-800">Kids</span>}
           <RatingBadge rating={item.rating} />
         </div>
@@ -322,7 +322,7 @@ function MenuItemRow({ item, qty, onAdd, onRemove, onOpen }: { item: MenuItemDat
         <p className="text-sm font-medium">
           {item.variants.length > 1 && <span className="text-stone-500">from </span>}
           {rupees(fromPrice)}
-          {item.spiceLevel > 0 && <span className="ml-2">{"🌶️".repeat(item.spiceLevel)}</span>}
+          {item.spiceLevel > 0 && <span className="ml-2 inline-flex align-[-2px] text-red-600" title="Spice level">{Array.from({ length: item.spiceLevel }, (_, i) => <Flame key={i} size={13} strokeWidth={2.2} />)}</span>}
         </p>
         {item.description && <p className="mt-1 line-clamp-2 text-sm text-stone-500">{item.description}</p>}
       </div>
