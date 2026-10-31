@@ -21,7 +21,7 @@ export default async function KitchenPage({ searchParams }: { searchParams: Prom
       order: { status: { not: "CANCELLED" } },
     },
     orderBy: { createdAt: "asc" },
-    include: { items: { where: { ...stationFilter, held: false }, orderBy: { createdAt: "asc" } }, order: { select: { type: true, tableName: true, orderNumber: true } } },
+    include: { items: { where: { ...stationFilter, held: false }, orderBy: { createdAt: "asc" } }, order: { select: { type: true, tableName: true, orderNumber: true, tokenNumber: true } } },
   });
 
   const data: KitchenKot[] = kots.map((k) => ({
@@ -30,7 +30,7 @@ export default async function KitchenPage({ searchParams }: { searchParams: Prom
     // A fired course starts its own clock.
     createdAt: new Date(Math.max(k.createdAt.getTime(), ...k.items.map((i) => i.firedAt?.getTime() ?? 0))).toISOString(),
     note: k.note,
-    label: k.order.tableName ? `Table ${k.order.tableName}` : `${k.order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${k.order.orderNumber}`,
+    label: k.order.tableName ? `Table ${k.order.tableName}` : k.order.tokenNumber ? `Token ${k.order.tokenNumber}` : `${k.order.type === "DELIVERY" ? "Delivery" : "Takeaway"} #${k.order.orderNumber}`,
     items: k.items
       .filter((i) => i.status !== "CANCELLED" && i.status !== "SERVED")
       .map((i) => ({

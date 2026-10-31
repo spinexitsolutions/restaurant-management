@@ -219,3 +219,18 @@ export async function sendTestWhatsApp(): Promise<FormState> {
   revalidatePath("/dashboard/settings");
   return res.ok ? { ok: `Test message sent to ${to}` } : { error: `Meta said: ${res.error}` };
 }
+
+/** Counter / QSR mode: token numbers for counter orders and the TV pickup display. */
+export async function saveCounterMode(enabled: boolean): Promise<FormState> {
+  const s = await requireRestaurantSession(["OWNER", "MANAGER"]);
+  await db.restaurant.update({ where: { id: s.restaurantId }, data: { tokenMode: enabled } });
+  return done(enabled ? "Token mode on" : "Token mode off");
+}
+
+/** New display link (the old TV stops updating), e.g. if the link was shared by mistake. */
+export async function resetDisplayLink(): Promise<FormState> {
+  const s = await requireRestaurantSession(["OWNER", "MANAGER"]);
+  const { randomBytes } = await import("node:crypto");
+  await db.restaurant.update({ where: { id: s.restaurantId }, data: { displayKey: randomBytes(16).toString("hex") } });
+  return done("New display link created");
+}

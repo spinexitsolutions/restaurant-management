@@ -2,10 +2,12 @@ import "server-only";
 import { db } from "@/lib/db";
 import { billFor } from "./order-view";
 import { upcomingByTable } from "./reservations";
+import { tokenBoard } from "./tokens";
 
 export interface FloorOrder {
   id: string;
   orderNumber: number;
+  tokenNumber: number | null;
   status: "OPEN" | "BILLED";
   type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
   customerName: string | null;
@@ -49,6 +51,7 @@ export async function getFloor(restaurantId: string) {
     return {
       id: o.id,
       orderNumber: o.orderNumber,
+      tokenNumber: o.tokenNumber,
       status: o.status as "OPEN" | "BILLED",
       type: o.type,
       customerName: o.customerName,
@@ -80,7 +83,9 @@ export async function getFloor(restaurantId: string) {
     where: { method: "RAZORPAY", createdAt: { gte: new Date(Date.now() - 10 * 60_000) }, order: { restaurantId } },
     select: { id: true, amount: true },
   });
+  const tokens = restaurant.tokenMode ? await tokenBoard(restaurantId) : null;
   return {
+    tokens,
     recentPayments: recentPayments.map((p) => ({ id: p.id, amount: Math.round(Number(p.amount) * 100), online: true })),
     tables: floorTables,
     others: orders.filter((o) => !o.tableId).map(summarize),

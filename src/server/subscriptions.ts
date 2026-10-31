@@ -1,4 +1,5 @@
 import "server-only";
+import { recordCommission } from "./resellers";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { financialYear } from "@/lib/numbering";
@@ -68,6 +69,7 @@ export async function applySubscription(
       },
     });
     await tx.restaurant.update({ where: { id: restaurantId }, data: { plan: "BASIC", planExpiresAt: end } });
+    await recordCommission(tx, record.id, restaurantId, tax.amount);
     return record;
   });
 }

@@ -12,7 +12,14 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/admin") && session.role !== "SUPER_ADMIN") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
+  if (pathname.startsWith("/partner") && session.role !== "RESELLER") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+  // Partners have no restaurant; keep them in their portal.
+  if (pathname.startsWith("/dashboard") && session.role === "RESELLER") {
+    return NextResponse.redirect(new URL("/partner", req.url));
+  }
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/dashboard/:path*", "/admin/:path*"] };
+export const config = { matcher: ["/dashboard/:path*", "/admin/:path*", "/partner/:path*"] };

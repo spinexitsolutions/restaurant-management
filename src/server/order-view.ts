@@ -35,6 +35,7 @@ export interface OrderItemView {
 export interface OrderView {
   id: string;
   orderNumber: number;
+  tokenNumber: number | null;
   publicToken: string;
   status: "OPEN" | "BILLED" | "PAID" | "CANCELLED";
   type: "DINE_IN" | "TAKEAWAY" | "DELIVERY";
@@ -106,6 +107,7 @@ function toView(order: LoadedOrder, r: Restaurant): OrderView {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    tokenNumber: order.tokenNumber,
     publicToken: order.publicToken,
     status: order.status,
     type: order.type,

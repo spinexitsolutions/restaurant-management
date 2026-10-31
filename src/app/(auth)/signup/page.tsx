@@ -1,18 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Card, Field, FormMessage, Input } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { signup } from "../actions";
 
 export default function SignupPage() {
   const [state, action] = useActionState(signup, null);
+  const [ref, setRef] = useState("");
+  // Partner referral links look like /signup?ref=RAVI10; remembered for the visit.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("ref");
+    try {
+      if (fromUrl) sessionStorage.setItem("ref", fromUrl);
+      setRef(fromUrl ?? sessionStorage.getItem("ref") ?? "");
+    } catch {
+      setRef(fromUrl ?? "");
+    }
+  }, []);
   return (
     <Card className="p-6">
       <h1 className="text-xl font-semibold">Start your 14-day free trial</h1>
       <p className="mb-5 text-sm text-stone-500">No card required. Set up your restaurant in 2 minutes.</p>
       <form action={action} className="space-y-4">
+        <input type="hidden" name="ref" value={ref} />
         <Field label="Restaurant name">
           <Input name="restaurantName" placeholder="Sharma Dhaba" required />
         </Field>

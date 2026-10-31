@@ -1,81 +1,52 @@
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { getValidUser } from "@/lib/auth";
+import Link from "next/link";
+import { MessageCircle, Search } from "lucide-react";
 import { db } from "@/lib/db";
-import { Badge, Card, PageHeader } from "@/components/ui";
+import { Card, PageHeader } from "@/components/ui";
 import { formatINR, toPaise } from "@/lib/gst";
-import { subscriptionStatus, type PlanDef } from "@/lib/plans";
-import { applySubscription } from "@/server/subscriptions";
 import { istDate } from "@/lib/numbering";
-import { logout } from "../(auth)/actions";
-import { ResetOwnerButton } from "./reset-owner";
+import { APP_NAME, appUrl, cn } from "@/lib/utils";
+import { ADMIN_FILTERS, adminRestaurants, renewalWhatsApp, type AdminFilter } from "@/server/admin";
+import { PlanBadge } from "./plan-badge";
 
-export const metadata = { title: "Super admin" };
+export const metadata = { title: "Admin · Restaurants" };
 
-async function requireSuperAdmin() {
-  const user = await getValidUser();
-  if (!user || user.role !== "SUPER_ADMIN") redirect("/login");
+const fmt = (d: Date) => d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "2-digit" });
+
+function ago(d: Date | null) {
+  if (!d) return "never";
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  return days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
 
-async function toggleRestaurant(formData: FormData) {
-  "use server";
-  await requireSuperAdmin();
-  const id = String(formData.get("id"));
-  const r = await db.restaurant.findUnique({ where: { id }, select: { isActive: true } });
-  if (r) await db.restaurant.update({ where: { id }, data: { isActive: !r.isActive } });
-  revalidatePath("/admin");
-}
-
-/** Records an offline payment (cash / bank transfer) and extends the outlet's plan. */
-async function extendPlan(formData: FormData) {
-  "use server";
-  await requireSuperAdmin();
-  const id = String(formData.get("id"));
-  const months = Number(formData.get("months"));
-  const amount = Math.round(Number(formData.get("amount") || 0) * 100);
-  if (!Number.isInteger(months) || months < 1 || months > 36 || amount < 0) return;
-  const plan = { code: months >= 12 ? "YEARLY" : months >= 3 ? "QUARTERLY" : "MONTHLY", name: "Manual", months, pricePaise: amount } as PlanDef;
-  await applySubscription(id, plan, { method: "MANUAL", amountPaise: amount, months, note: String(formData.get("note") || "") || undefined });
-  revalidatePath("/admin");
-}
-
-export default async function AdminPage() {
-  await requireSuperAdmin();
-  const restaurants = await db.restaurant.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
-      _count: { select: { menuItems: true, tables: true, users: true } },
-      users: { where: { role: "OWNER" }, select: { name: true, email: true, phone: true } },
-      organization: { select: { name: true, _count: { select: { restaurants: true } } } },
-    },
-  });
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string }> }) {
+  const sp = await searchParams;
+  const filter: AdminFilter = sp.f && sp.f in ADMIN_FILTERS ? (sp.f as AdminFilter) : "all";
+  const q = sp.q ?? "";
   const monthStart = new Date(`${istDate().slice(0, 8)}01T00:00:00+05:30`);
-  const [revenue, recent] = await Promise.all([
+  const [rows, all, revenue, signups, earned, paidOut] = await Promise.all([
+    adminRestaurants(filter, q),
+    adminRestaurants("all", ""),
     db.subscriptionPayment.aggregate({ where: { createdAt: { gte: monthStart } }, _sum: { amount: true } }),
-    db.subscriptionPayment.findMany({ orderBy: { createdAt: "desc" }, take: 20, include: { restaurant: { select: { name: true } } } }),
+    db.restaurant.count({ where: { createdAt: { gte: monthStart } } }),
+    db.resellerCommission.aggregate({ _sum: { amount: true } }),
+    db.resellerPayout.aggregate({ _sum: { amount: true } }),
   ]);
-  const states = restaurants.map((r) => ({ r, sub: subscriptionStatus(r.planExpiresAt) }));
-  const paidActive = states.filter((x) => x.r.plan !== "TRIAL" && x.sub.state !== "EXPIRED").length;
-  const trials = states.filter((x) => x.r.plan === "TRIAL" && x.sub.state !== "EXPIRED").length;
-  const expired = states.filter((x) => x.sub.state === "EXPIRED").length;
+  const paying = all.filter((r) => r.plan !== "TRIAL" && r.state !== "EXPIRED").length;
+  const trials = all.filter((r) => r.plan === "TRIAL" && r.state !== "EXPIRED").length;
+  const due = all.filter((r) => r.isActive && r.state !== "EXPIRED" && r.daysLeft <= 7).sort((a, b) => a.daysLeft - b.daysLeft);
+  const billingUrl = appUrl("/dashboard/billing");
 
   return (
-    <div className="mx-auto max-w-6xl p-6">
-      <PageHeader
-        title="All restaurants"
-        description={`${restaurants.length} restaurant(s) on the platform`}
-        actions={
-          <form action={logout}>
-            <button className="text-sm text-stone-600 hover:text-red-600">Log out</button>
-          </form>
-        }
-      />
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="space-y-6">
+      <PageHeader title="Restaurants" description={`${all.length} outlet(s) on ${APP_NAME}`} />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[
-          ["Paying outlets", String(paidActive)],
+          ["Paying", String(paying)],
           ["On trial", String(trials)],
-          ["Expired", String(expired)],
+          ["Renewal due (7 days)", String(due.length)],
+          ["New this month", String(signups)],
           ["Revenue this month (ex-GST)", formatINR(toPaise(revenue._sum.amount ?? 0))],
+          ["Partner commission due", formatINR(toPaise(earned._sum.amount ?? 0) - toPaise(paidOut._sum.amount ?? 0))],
         ].map(([label, value]) => (
           <Card key={label} className="p-4">
             <p className="text-xs text-stone-500">{label}</p>
@@ -83,85 +54,95 @@ export default async function AdminPage() {
           </Card>
         ))}
       </div>
+
+      {due.length > 0 && (
+        <Card className="p-0">
+          <h2 className="px-5 pt-4 pb-2 font-semibold">Call today: renewals due</h2>
+          <ul className="divide-y divide-stone-100 text-sm">
+            {due.slice(0, 15).map((r) => {
+              const wa = renewalWhatsApp(r, APP_NAME, billingUrl);
+              return (
+                <li key={r.id} className="flex flex-wrap items-center gap-3 px-5 py-2">
+                  <Link href={`/admin/restaurants/${r.id}`} className="min-w-0 flex-1 font-medium hover:underline">
+                    {r.name} <span className="font-normal text-stone-500">· {r.owner?.name} {r.owner?.phone}</span>
+                  </Link>
+                  <PlanBadge r={r} />
+                  <span className="w-28 text-xs text-stone-500">last order {ago(r.lastOrderAt)}</span>
+                  {wa && (
+                    <a href={wa} target="_blank" className="inline-flex items-center gap-1 rounded-lg bg-[#25D366] px-2 py-1 text-xs font-semibold text-white">
+                      <MessageCircle size={14} /> Remind
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(Object.keys(ADMIN_FILTERS) as AdminFilter[]).map((f) => (
+          <Link
+            key={f}
+            href={`/admin?f=${f}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+            className={cn("rounded-full px-3 py-1 text-sm", f === filter ? "bg-stone-900 text-white" : "bg-white ring-1 ring-stone-200 hover:bg-stone-100")}
+          >
+            {ADMIN_FILTERS[f]}
+          </Link>
+        ))}
+        <form className="relative ml-auto">
+          <input type="hidden" name="f" value={filter} />
+          <Search size={16} className="absolute top-1/2 left-3 -translate-y-1/2 text-stone-400" />
+          <input name="q" defaultValue={q} placeholder="Name, city, owner, phone" className="h-9 w-64 rounded-lg border border-stone-300 bg-white pr-3 pl-9 text-sm" />
+        </form>
+      </div>
+
       <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[760px] text-sm">
+        <table className="w-full min-w-[900px] text-sm">
           <thead className="border-b border-stone-200 bg-stone-50 text-left text-stone-500">
             <tr>
               <th className="px-4 py-3 font-medium">Restaurant</th>
               <th className="px-4 py-3 font-medium">Owner</th>
               <th className="px-4 py-3 font-medium">Plan</th>
-              <th className="px-4 py-3 font-medium">Usage</th>
+              <th className="px-4 py-3 font-medium">Activity</th>
+              <th className="px-4 py-3 font-medium">Partner</th>
               <th className="px-4 py-3 font-medium">Joined</th>
-              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-100">
-            {restaurants.map((r) => (
-              <tr key={r.id} className={r.isActive ? "" : "opacity-50"}>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-stone-500">
+                  Nothing here.
+                </td>
+              </tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className={cn("hover:bg-stone-50", !r.isActive && "opacity-60")}>
                 <td className="px-4 py-3">
-                  <a href={`/m/${r.slug}`} target="_blank" className="font-medium hover:underline">
+                  <Link href={`/admin/restaurants/${r.id}`} className="font-medium hover:underline">
                     {r.name}
-                  </a>
+                  </Link>
                   <p className="text-xs text-stone-500">
                     {r.city ?? "-"}
-                    {r.organization._count.restaurants > 1 && ` · ${r.organization.name} (${r.organization._count.restaurants} outlets)`}
+                    {r.outlets > 1 && ` · ${r.orgName} (${r.outlets} outlets)`}
+                    {r.deletionScheduledAt && <span className="text-red-600"> · deleting {fmt(r.deletionScheduledAt)}</span>}
                   </p>
                 </td>
                 <td className="px-4 py-3">
-                  {r.users[0]?.name}
-                  <p className="text-xs text-stone-500">{[r.users[0]?.email, r.users[0]?.phone].filter(Boolean).join(" · ")}</p>
+                  {r.owner?.name}
+                  <p className="text-xs text-stone-500">{[r.owner?.phone, r.owner?.email].filter(Boolean).join(" · ")}</p>
                 </td>
                 <td className="px-4 py-3">
-                  <Badge tone={r.plan === "TRIAL" ? "amber" : "green"}>{r.plan}</Badge>
-                  {r.planExpiresAt && <p className="mt-1 text-xs text-stone-500">till {r.planExpiresAt.toLocaleDateString("en-IN")}</p>}
-                  <form action={extendPlan} className="mt-2 flex items-center gap-1">
-                    <input type="hidden" name="id" value={r.id} />
-                    <select name="months" className="rounded border border-stone-300 px-1 py-0.5 text-xs" aria-label="Months">
-                      {[1, 3, 6, 12].map((m) => (
-                        <option key={m} value={m}>
-                          +{m}m
-                        </option>
-                      ))}
-                    </select>
-                    <input name="amount" type="number" min={0} placeholder="₹ ex-GST" className="w-20 rounded border border-stone-300 px-1 py-0.5 text-xs" />
-                    <button className="rounded bg-stone-900 px-2 py-0.5 text-xs text-white">Extend</button>
-                  </form>
+                  <PlanBadge r={r} />
+                  {r.planExpiresAt && <p className="mt-1 text-xs text-stone-500">till {fmt(r.planExpiresAt)}</p>}
                 </td>
                 <td className="px-4 py-3 text-stone-600">
-                  {r._count.menuItems} items · {r._count.tables} tables · {r._count.users} staff
+                  {r.orders30} orders / 30d
+                  <p className="text-xs text-stone-500">last {ago(r.lastOrderAt)}</p>
                 </td>
-                <td className="px-4 py-3 text-stone-600">{r.createdAt.toLocaleDateString("en-IN")}</td>
-                <td className="px-4 py-3 text-right">
-                  <form action={toggleRestaurant}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <button className={`text-sm ${r.isActive ? "text-red-600" : "text-green-700"}`}>{r.isActive ? "Suspend" : "Activate"}</button>
-                  </form>
-                  <ResetOwnerButton restaurantId={r.id} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-
-      <Card className="mt-6 overflow-x-auto p-0">
-        <h2 className="px-5 pt-5 pb-3 font-semibold">Recent subscription payments</h2>
-        <table className="w-full min-w-[640px] text-sm">
-          <tbody className="divide-y divide-stone-100">
-            {recent.length === 0 && (
-              <tr>
-                <td className="px-5 py-6 text-center text-stone-500">No payments yet.</td>
-              </tr>
-            )}
-            {recent.map((p) => (
-              <tr key={p.id}>
-                <td className="px-5 py-2">{p.invoiceNumber}</td>
-                <td className="px-5 py-2">{p.restaurant.name}</td>
-                <td className="px-5 py-2 text-stone-600">
-                  {p.method} · {p.months}m
-                </td>
-                <td className="px-5 py-2 text-stone-600">{p.createdAt.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
-                <td className="px-5 py-2 text-right tabular-nums">{formatINR(toPaise(p.total))}</td>
+                <td className="px-4 py-3 text-stone-600">{r.reseller ?? "-"}</td>
+                <td className="px-4 py-3 text-stone-600">{fmt(r.createdAt)}</td>
               </tr>
             ))}
           </tbody>

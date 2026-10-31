@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { requireRestaurantSession, signIn } from "@/lib/auth";
+import { requireRestaurantSession, refreshSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { audit } from "@/server/approval";
 import { copyMenu, createOutlet, outletsFor } from "@/server/outlets";
@@ -21,7 +21,7 @@ export async function switchOutlet(restaurantId: string) {
   const { s, ids } = await ownerWithOutlets();
   if (!ids.has(restaurantId)) return;
   const user = await db.user.update({ where: { id: s.userId }, data: { restaurantId } });
-  await signIn(user);
+  await refreshSession(user);
   redirect("/dashboard");
 }
 

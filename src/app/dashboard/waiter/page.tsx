@@ -8,5 +8,5 @@ export const metadata = { title: "Waiter" };
 export default async function WaiterPage() {
   const session = await requireRestaurantSession(ORDER_ROLES);
   const floor = await getFloor(session.restaurantId);
-  return <PosScreen title="nav.tables" tables={floor.tables} others={floor.others} stats={null} />;
+  return <PosScreen title="nav.tables" tables={floor.tables} others={floor.others} stats={null} tokens={floor.tokens} />;
 }

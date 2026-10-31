@@ -40,6 +40,18 @@ async function nextDailyNumber(tx: Tx, restaurantId: string, kind: "order" | "ko
   return (kind === "order" ? row.nextOrderNumber : row.nextKotNumber) - 1;
 }
 
+/** Next counter token for today (QSR mode); restarts at 1 every day. */
+async function nextToken(tx: Tx, restaurantId: string): Promise<number> {
+  const today = istDate();
+  const [row] = await tx.$queryRaw<{ nextTokenNumber: number }[]>`
+    UPDATE "Restaurant" SET
+      "nextTokenNumber" = CASE WHEN "tokenSeqDate" IS DISTINCT FROM ${today} THEN 1 ELSE "nextTokenNumber" END + 1,
+      "tokenSeqDate" = ${today}
+    WHERE id = ${restaurantId}
+    RETURNING "nextTokenNumber"`;
+  return row.nextTokenNumber - 1;
+}
+
 /** Atomically takes the next invoice number in the current financial year's series. */
 async function nextInvoiceNumber(tx: Tx, restaurantId: string): Promise<string> {
   const fy = financialYear();
@@ -183,6 +195,8 @@ export async function placeItems(input: PlaceItemsInput) {
         data: {
           restaurantId: input.restaurantId,
           orderNumber: await nextDailyNumber(tx, input.restaurantId, "order"),
+          // Counter orders (no table) get a token for the pickup display.
+          tokenNumber: restaurant.tokenMode && !table ? await nextToken(tx, input.restaurantId) : null,
           type: table ? "DINE_IN" : n.type,
           source: n.source,
           tableId: table?.id ?? null,

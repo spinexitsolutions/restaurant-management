@@ -71,6 +71,10 @@ export const hi: Record<MessageKey, string> = {
   "floor.billsToday": "आज के बिल",
   "floor.runningOrders": "चालू ऑर्डर",
 
+  "token.label": "टोकन {n}",
+  "token.ready": "ले जाने के लिए तैयार",
+  "token.handedOver": "दे दिया",
+  "token.preparing": "{count} बन रहे हैं",
   "menu.search": "आइटम खोजें",
   "menu.all": "सभी",
   "menu.soldOut": "खत्म",

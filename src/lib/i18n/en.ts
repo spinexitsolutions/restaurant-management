@@ -75,6 +75,10 @@ export const en = {
   "floor.billsToday": "Bills paid today",
   "floor.runningOrders": "Running orders",
 
+  "token.label": "Token {n}",
+  "token.ready": "Ready for pickup",
+  "token.handedOver": "Handed over",
+  "token.preparing": "{count} preparing",
   // Menu picker
   "menu.search": "Search items",
   "menu.all": "All",

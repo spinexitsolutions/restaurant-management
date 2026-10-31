@@ -20,6 +20,7 @@ const signupSchema = z.object({
   phone: z.string().trim().regex(/^[6-9]\d{9}$/, "Enter a 10-digit mobile number"),
   password: z.string().min(8, "Password must be at least 8 characters"),
   sampleMenu: z.boolean(),
+  ref: z.string().trim().toUpperCase().max(20).optional(),
 });
 
 async function uniqueSlug(name: string): Promise<string> {
@@ -39,6 +40,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     phone: formData.get("phone"),
     password: formData.get("password"),
     sampleMenu: formData.get("sampleMenu") === "on",
+    ref: String(formData.get("ref") ?? "") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const data = parsed.data;
@@ -48,13 +50,15 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
   }
 
   const slug = await uniqueSlug(data.restaurantName);
+  // Referral from a sales partner (/signup?ref=CODE); an unknown code is simply ignored.
+  const reseller = data.ref ? await db.reseller.findFirst({ where: { code: data.ref, isActive: true }, select: { id: true } }) : null;
   const passwordHash = await bcrypt.hash(data.password, 10);
 
   const user = await db.$transaction(async (tx) => {
     const restaurant = await tx.restaurant.create({
       data: {
         name: data.restaurantName,
-        organization: { create: { name: data.restaurantName } },
+        organization: { create: { name: data.restaurantName, resellerId: reseller?.id ?? null } },
         slug,
         phone: data.phone,
         whatsappNumber: data.phone,
@@ -90,6 +94,7 @@ const HOME: Record<string, string> = {
   CHEF: "/dashboard/kitchen",
   WAITER: "/dashboard/waiter",
   CASHIER: "/dashboard/pos",
+  RESELLER: "/partner",
 };
 
 // Compared against when the email is unknown, so a wrong email takes as long as a wrong password.

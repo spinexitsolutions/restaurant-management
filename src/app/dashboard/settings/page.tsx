@@ -4,7 +4,7 @@ import { buildUpiLink, getOnlinePaymentMode } from "@/lib/payments";
 import { qrDataUrl } from "@/lib/qr";
 import { PageHeader } from "@/components/ui";
 import { appUrl } from "@/lib/utils";
-import { AggregatorForm, GstForm, LoyaltyForm, WhatsAppForm, MenuSettingsForm, PaymentBasicsForm, ProfileForm, RazorpayForm } from "./forms";
+import { CounterModeForm, AggregatorForm, GstForm, LoyaltyForm, WhatsAppForm, MenuSettingsForm, PaymentBasicsForm, ProfileForm, RazorpayForm } from "./forms";
 
 export const metadata = { title: "Settings" };
 
@@ -41,6 +41,7 @@ export default async function SettingsPage() {
           menuThemeColor: r.menuThemeColor,
         }}
       />
+      <CounterModeForm enabled={r.tokenMode} displayUrl={appUrl(`/token/${r.displayKey}`)} />
       {isOwner ? (
         <>
           <GstForm

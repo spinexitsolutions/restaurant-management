@@ -120,6 +120,17 @@ In Razorpay Dashboard → Webhooks, add `https://<your-domain>/api/webhooks/razo
 | Delete customer data | On a guest's request: removes their name, mobile, birthday and points everywhere; bills keep the amounts (and B2B buyer GSTIN) for GST records |
 | Delete account | The owner confirms with the restaurant name and password. Everything (all outlets) is deleted after 30 days by the daily job; a red banner shows the date and the owner can cancel until then |
 
+## Counter / QSR mode and the platform admin
+
+| Feature | How it works |
+|---|---|
+| Token numbers | Settings → Counter / QSR. Every counter order (takeaway, delivery, Zomato/Swiggy) gets a token that restarts at 1 each day; table orders don't. The token is printed big on the KOT and bill, shown on the kitchen screen, the order screen and the guest's order page |
+| Order-ready TV | Open the display link from Settings on any smart TV / tablet (no login; the secret link can be regenerated). Left: tokens being prepared. Right: ready tokens, which flash and are called out ("टोकन नंबर 42, आपका ऑर्डर तैयार है") after tapping "Start display" once. Ready tokens leave the screen when the counter taps "Handed over" on the POS, or after 20 minutes |
+| Admin: restaurants | `/admin`: paying / trial / due / revenue / new sign-ups at a glance, a "call today" list of renewals due with a ready WhatsApp reminder, filters (trial, paying, due, expired, suspended, no orders in 7 days) and search by name, city, owner or phone |
+| Admin: one restaurant | Usage (orders and sales in 30 days, last order, staff last logins), record an offline payment, give free days, suspend, reset the owner's password, private notes, and assign a partner |
+| Support login | "Log in as owner" opens the restaurant's dashboard for 2 hours with a purple banner. It is recorded in their activity log, every action shows "(support: …)", account deletion is blocked, and "Exit support" returns to the admin |
+| Partners / resellers | `/admin/resellers`: add agents with a commission % and a referral code. Restaurants that sign up with `/signup?ref=CODE` (or are assigned by hand) are theirs; every subscription payment (online or recorded offline) earns them the % of the price before GST, once. Record payouts with the UTR. Partners log in to `/partner` to see their link, restaurants, earnings and payouts |
+
 ## Going live (Vercel + Supabase)
 
 1. Create a Supabase project and copy the pooled and direct connection strings into `DATABASE_URL` / `DIRECT_URL`.

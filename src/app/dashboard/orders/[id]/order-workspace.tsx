@@ -102,7 +102,9 @@ export function OrderWorkspace(props: {
     : channelName
       ? `${channelName} ${order?.channelRef ? `#${order.channelRef}` : order ? `· order ${order.orderNumber}` : "order"}`
       : order
-        ? `${order.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")} #${order.orderNumber}`
+        ? order.tokenNumber
+          ? `${t("token.label", { n: order.tokenNumber })} · ${order.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")}`
+          : `${order.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")} #${order.orderNumber}`
         : context.type === "DELIVERY"
           ? "New delivery"
           : "New takeaway";

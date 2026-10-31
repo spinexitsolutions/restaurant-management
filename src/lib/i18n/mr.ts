@@ -71,6 +71,10 @@ export const mr: Record<MessageKey, string> = {
   "floor.billsToday": "आजची बिले",
   "floor.runningOrders": "चालू ऑर्डर",
 
+  "token.label": "टोकन {n}",
+  "token.ready": "नेण्यासाठी तयार",
+  "token.handedOver": "दिले",
+  "token.preparing": "{count} बनत आहेत",
   "menu.search": "आयटम शोधा",
   "menu.all": "सर्व",
   "menu.soldOut": "संपले",

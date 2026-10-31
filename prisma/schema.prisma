@@ -13,6 +13,7 @@ datasource db {
 
 enum Role {
   SUPER_ADMIN
+  RESELLER
   OWNER
   MANAGER
   CASHIER
@@ -99,6 +100,50 @@ model Organization {
   name        String
   createdAt   DateTime     @default(now())
   restaurants Restaurant[]
+  resellerId  String? // the partner who brought this customer
+  reseller    Reseller?    @relation(fields: [resellerId], references: [id], onDelete: SetNull)
+}
+
+/// Sales partner / agent who refers restaurants and earns a share of their subscription payments.
+model Reseller {
+  id             String               @id @default(cuid())
+  name           String
+  phone          String
+  email          String?
+  code           String               @unique // referral code used in /signup?ref=CODE
+  commissionRate Decimal              @default(20) @db.Decimal(5, 2) // % of the plan price before GST
+  isActive       Boolean              @default(true)
+  userId         String?              @unique // portal login
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime             @default(now())
+  organizations  Organization[]
+  commissions    ResellerCommission[]
+  payouts        ResellerPayout[]
+}
+
+model ResellerCommission {
+  id                    String              @id @default(cuid())
+  resellerId            String
+  reseller              Reseller            @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+  subscriptionPaymentId String              @unique
+  subscriptionPayment   SubscriptionPayment @relation(fields: [subscriptionPaymentId], references: [id], onDelete: Cascade)
+  rate                  Decimal             @db.Decimal(5, 2)
+  amount                Decimal             @db.Decimal(10, 2)
+  createdAt             DateTime            @default(now())
+
+  @@index([resellerId, createdAt])
+}
+
+model ResellerPayout {
+  id         String   @id @default(cuid())
+  resellerId String
+  reseller   Reseller @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+  amount     Decimal  @db.Decimal(10, 2)
+  reference  String? // UTR / UPI reference
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([resellerId, createdAt])
 }
 
 model Restaurant {
@@ -192,6 +237,13 @@ model Restaurant {
   plan          Plan      @default(TRIAL)
   planExpiresAt DateTime?
   isActive      Boolean   @default(true)
+  adminNote     String? // platform team's private notes (support, sales)
+
+  // Counter / QSR mode: takeaway orders get a daily token number shown on a TV display
+  tokenMode       Boolean @default(false)
+  nextTokenNumber Int     @default(1)
+  tokenSeqDate    String?
+  displayKey      String  @unique @default(cuid()) // secret part of the public token display URL
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -229,6 +281,7 @@ model User {
   sessionVersion    Int                @default(0) // bumped on password reset: signs out every device
   language          String             @default("en") // en | hi | mr: staff screens and notifications
   pushSubscriptions PushSubscription[]
+  reseller          Reseller?
   pinHash           String? // 4-6 digit approval PIN for owners and managers
   role              Role
   isActive          Boolean            @default(true)
@@ -354,7 +407,8 @@ model Order {
   id            String       @id @default(cuid())
   restaurantId  String
   restaurant    Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  orderNumber   Int // daily running number, shown as token for takeaway
+  orderNumber   Int // daily running number
+  tokenNumber   Int? // counter token (QSR mode), daily
   publicToken   String       @unique @default(cuid()) // lets the customer track/pay without logging in
   type          OrderType    @default(DINE_IN)
   source        OrderSource  @default(STAFF)
@@ -713,24 +767,25 @@ model Attendance {
 // ---------- SaaS subscription (restaurants pay the platform) ----------
 
 model SubscriptionPayment {
-  id                String     @id @default(cuid())
+  id                String              @id @default(cuid())
   restaurantId      String
-  restaurant        Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurant        Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   planCode          String // e.g. MONTHLY, YEARLY
   months            Int
-  invoiceNumber     String     @unique
-  amount            Decimal    @db.Decimal(10, 2) // before tax
-  cgst              Decimal    @default(0) @db.Decimal(10, 2)
-  sgst              Decimal    @default(0) @db.Decimal(10, 2)
-  igst              Decimal    @default(0) @db.Decimal(10, 2)
-  total             Decimal    @db.Decimal(10, 2)
+  invoiceNumber     String              @unique
+  amount            Decimal             @db.Decimal(10, 2) // before tax
+  cgst              Decimal             @default(0) @db.Decimal(10, 2)
+  sgst              Decimal             @default(0) @db.Decimal(10, 2)
+  igst              Decimal             @default(0) @db.Decimal(10, 2)
+  total             Decimal             @db.Decimal(10, 2)
   periodStart       DateTime
   periodEnd         DateTime
   razorpayOrderId   String?
-  razorpayPaymentId String?    @unique
-  method            String     @default("RAZORPAY") // RAZORPAY | MANUAL
+  razorpayPaymentId String?             @unique
+  method            String              @default("RAZORPAY") // RAZORPAY | MANUAL
   note              String?
-  createdAt         DateTime   @default(now())
+  createdAt         DateTime            @default(now())
+  commission        ResellerCommission?
 
   @@index([restaurantId, createdAt])
 }

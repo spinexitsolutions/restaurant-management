@@ -12,6 +12,8 @@ export interface SessionPayload {
   role: Role;
   name: string;
   v?: number; // user's sessionVersion when signed in
+  imp?: string; // platform admin's user id when they are logged in as this user for support
+  impName?: string;
 }
 
 function secret() {
@@ -20,11 +22,14 @@ function secret() {
   return new TextEncoder().encode(value);
 }
 
-export async function signSession(payload: SessionPayload): Promise<string> {
+/** Support sessions (admin logged in as an owner) expire quickly. */
+export const SUPPORT_MAX_AGE_SECONDS = 60 * 60 * 2;
+
+export async function signSession(payload: SessionPayload, maxAgeSeconds = MAX_AGE_SECONDS): Promise<string> {
   return new SignJWT({ ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${MAX_AGE_SECONDS}s`)
+    .setExpirationTime(`${maxAgeSeconds}s`)
     .sign(secret());
 }
 

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Bike, ShoppingBag } from "lucide-react";
-import { FloorAlerts, OtherOrders, SoundToggle, TableGrid } from "@/components/floor-view";
+import { FloorAlerts, OtherOrders, PickupStrip, SoundToggle, TableGrid } from "@/components/floor-view";
+import type { BoardToken } from "@/server/tokens";
 import { Card } from "@/components/ui";
 import { formatINR } from "@/lib/gst";
 import { beep, useLiveRefresh } from "@/hooks/use-live";
@@ -18,12 +19,14 @@ export function PosScreen({
   stats,
   title,
   recentPayments,
+  tokens,
 }: {
   tables: FloorTable[];
   others: FloorOrder[];
   stats: { sales: number; orders: number; running: number } | null;
   title: MessageKey;
   recentPayments?: { id: string; amount: number; online: boolean }[];
+  tokens?: { preparing: BoardToken[]; ready: BoardToken[] } | null;
 }) {
   const t = useT();
   const [sound, setSound] = useState(false);
@@ -68,6 +71,7 @@ export function PosScreen({
         </div>
       )}
 
+      {tokens && <PickupStrip tokens={tokens} />}
       <FloorAlerts tables={tables} />
 
       <div className="grid gap-6 xl:grid-cols-[1fr_320px]">

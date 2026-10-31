@@ -103,6 +103,12 @@ export function OrderTracker({
         <p className="text-sm opacity-90">
           {order.tableName && `Table ${order.tableName} · `}Order #{order.orderNumber}
         </p>
+        {order.tokenNumber && (
+          <p className="mt-3 inline-block rounded-xl bg-white/20 px-4 py-2 text-center">
+            <span className="block text-xs uppercase opacity-90">Your token</span>
+            <span className="text-4xl font-black">{order.tokenNumber}</span>
+          </p>
+        )}
       </header>
 
       <main className="space-y-4 p-4">

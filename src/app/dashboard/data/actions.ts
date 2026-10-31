@@ -11,6 +11,7 @@ export type FormState = { error?: string; ok?: string } | null;
 
 export async function requestAccountDeletion(_: FormState, formData: FormData): Promise<FormState> {
   const s = await requireRestaurantSession(["OWNER"]);
+  if (s.support) return { error: "Only the owner can delete the account, not platform support." };
   const [user, restaurant] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: s.userId } }),
     db.restaurant.findUniqueOrThrow({ where: { id: s.restaurantId }, select: { name: true, organizationId: true } }),

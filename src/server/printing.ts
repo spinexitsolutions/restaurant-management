@@ -11,8 +11,9 @@ const time = (d: Date) => d.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkat
 /** Rupee amount (Decimal or number of rupees) as "120.00". */
 const money = (v: { toString(): string } | number) => Number(v.toString()).toFixed(2);
 
-function orderLabel(o: { tableName: string | null; channel: string | null; channelRef: string | null; type: string; orderNumber: number }) {
+function orderLabel(o: { tableName: string | null; channel: string | null; channelRef: string | null; type: string; orderNumber: number; tokenNumber: number | null }) {
   if (o.tableName) return `TABLE ${o.tableName}`;
+  if (o.tokenNumber) return `TOKEN ${o.tokenNumber}${o.channel ? ` · ${o.channel}` : ""}`;
   if (o.channel) return `${o.channel}${o.channelRef ? ` #${o.channelRef}` : ""}`;
   return `${o.type === "DELIVERY" ? "DELIVERY" : "TAKEAWAY"} #${o.orderNumber}`;
 }
@@ -83,6 +84,7 @@ export async function enqueueBill(tx: Tx, restaurantId: string, orderId: string)
     ...(taxInvoice ? [{ t: "text" as const, text: `GSTIN: ${r.gstin}`, align: "center" as const }] : []),
     ...(r.fssaiNumber ? [{ t: "text" as const, text: `FSSAI: ${r.fssaiNumber}`, align: "center" as const }] : []),
     { t: "rule" },
+    ...(o.tokenNumber ? [{ t: "text" as const, text: `TOKEN ${o.tokenNumber}`, align: "center" as const, big: true, bold: true }] : []),
     { t: "text", text: taxInvoice ? "TAX INVOICE" : "BILL", align: "center", bold: true },
     { t: "text", text: `Bill: ${o.invoiceNumber}` },
     { t: "text", text: `${(o.billedAt ?? new Date()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}` },

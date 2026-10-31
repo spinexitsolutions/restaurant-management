@@ -6,8 +6,9 @@ import { Bell, BellRing, Droplets, Receipt, Volume2, VolumeX } from "lucide-reac
 import { formatINR } from "@/lib/gst";
 import { cn } from "@/lib/utils";
 import { beep } from "@/hooks/use-live";
-import { resolveRequest } from "@/app/dashboard/orders/actions";
+import { markServed, resolveRequest } from "@/app/dashboard/orders/actions";
 import type { FloorOrder, FloorTable } from "@/server/floor";
+import type { BoardToken } from "@/server/tokens";
 import { useT } from "./i18n";
 
 const REQUEST_LABEL = { CALL_WAITER: "floor.callWaiter", REQUEST_BILL: "floor.wantsBill", WATER: "floor.water" } as const;
@@ -142,7 +143,7 @@ export function OtherOrders({ orders }: { orders: FloorOrder[] }) {
         <li key={o.id}>
           <Link href={`/dashboard/orders/${o.id}`} className="flex items-center justify-between rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-stone-200 hover:ring-brand-500">
             <span>
-              <span className="font-semibold">#{o.orderNumber}</span> {o.tableName ? t("floor.table", { name: o.tableName }) : o.channel ? (o.channel === "ZOMATO" ? "Zomato" : "Swiggy") : o.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")}
+              <span className="font-semibold">{o.tokenNumber ? `Token ${o.tokenNumber}` : `#${o.orderNumber}`}</span> {o.tableName ? t("floor.table", { name: o.tableName }) : o.channel ? (o.channel === "ZOMATO" ? "Zomato" : "Swiggy") : o.type === "DELIVERY" ? t("floor.delivery") : t("floor.takeaway")}
               {o.customerName && <span className="text-stone-500"> · {o.customerName}</span>}
               {o.readyCount > 0 && <span className="ml-2 text-green-700">· {t("floor.readyShort")}</span>}
             </span>
@@ -154,3 +155,38 @@ export function OtherOrders({ orders }: { orders: FloorOrder[] }) {
   );
 }
 
+
+/** QSR: tokens whose food is ready, with one tap to mark them collected. */
+export function PickupStrip({ tokens }: { tokens: { preparing: BoardToken[]; ready: BoardToken[] } }) {
+  const t = useT();
+  const [pending, start] = useTransition();
+  return (
+    <div className="mb-6 rounded-xl bg-green-50 p-4 ring-1 ring-green-200">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-semibold text-green-900">{t("token.ready")}</h2>
+        <span className="text-sm text-stone-600">{t("token.preparing", { count: tokens.preparing.length })}</span>
+      </div>
+      {tokens.ready.length === 0 ? (
+        <p className="text-sm text-stone-500">—</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {tokens.ready.map((r) => (
+            <div key={r.orderId} className="flex items-center gap-2 rounded-lg bg-white py-1.5 pr-1.5 pl-3 ring-1 ring-green-300">
+              <Link href={`/dashboard/orders/${r.orderId}`} className="text-lg font-bold text-green-900">
+                {r.token}
+              </Link>
+              {r.label && <span className="max-w-24 truncate text-xs text-stone-500">{r.label}</span>}
+              <button
+                disabled={pending}
+                onClick={() => start(async () => void (await markServed(r.readyItemIds)))}
+                className="rounded-md bg-green-600 px-2 py-1 text-xs font-semibold text-white"
+              >
+                {t("token.handedOver")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

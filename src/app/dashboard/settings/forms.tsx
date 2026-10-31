@@ -1,13 +1,13 @@
 "use client";
 
 import { useActionState, useMemo, useState, useTransition } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Copy, ExternalLink, Tv } from "lucide-react";
 import { Badge, Button, Card, Field, FormMessage, Input, Select, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { ImageUpload } from "@/components/image-upload";
 import { calculateBill, formatINR } from "@/lib/gst";
 import type { OnlinePaymentMode } from "@/lib/payments";
-import { removeRazorpay, saveAggregators, saveGst, saveLoyalty, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay, saveWhatsApp, sendTestWhatsApp } from "./actions";
+import { resetDisplayLink, saveCounterMode, removeRazorpay, saveAggregators, saveGst, saveLoyalty, saveMenuSettings, savePaymentBasics, saveProfile, saveRazorpay, saveWhatsApp, sendTestWhatsApp } from "./actions";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -481,6 +481,57 @@ export function WhatsAppForm({
           </ul>
         </div>
       )}
+    </Section>
+  );
+}
+
+export function CounterModeForm({ enabled, displayUrl }: { enabled: boolean; displayUrl: string }) {
+  const [on, setOn] = useState(enabled);
+  const [state, setState] = useState<{ ok?: string; error?: string } | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <Section title="Counter / QSR (token system)" description="For cafes, fast food and cloud kitchens: every counter order (takeaway, delivery, Zomato/Swiggy) gets a token number that restarts daily.">
+      <div className="space-y-4">
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={on}
+            disabled={pending}
+            className="h-4 w-4 accent-brand-600"
+            onChange={(e) => {
+              const v = e.target.checked;
+              setOn(v);
+              start(async () => setState(await saveCounterMode(v)));
+            }}
+          />
+          Give counter orders a token number (printed big on the KOT and bill)
+        </label>
+        {on && (
+          <div className="rounded-lg bg-stone-50 p-4 text-sm">
+            <p className="flex items-center gap-2 font-semibold">
+              <Tv size={16} /> Order-ready TV screen
+            </p>
+            <p className="mt-1 text-stone-600">Open this link on a smart TV or old tablet at the counter, then tap “Start display” once for sound. It shows tokens being prepared and calls out ready ones.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <code className="max-w-full truncate rounded bg-white px-2 py-1 text-xs ring-1 ring-stone-200">{displayUrl}</code>
+              <Button variant="secondary" size="sm" onClick={() => navigator.clipboard.writeText(displayUrl).then(() => setState({ ok: "Link copied" }))}>
+                <Copy size={14} /> Copy
+              </Button>
+              <a href={displayUrl} target="_blank" className="inline-flex h-8 items-center gap-1 rounded-lg px-3 text-sm ring-1 ring-stone-300 hover:bg-white">
+                <ExternalLink size={14} /> Open
+              </a>
+              <button
+                className="text-xs text-stone-500 hover:underline"
+                disabled={pending}
+                onClick={() => confirm("Create a new link? The TV using the old link will stop updating.") && start(async () => setState(await resetDisplayLink()))}
+              >
+                New link
+              </button>
+            </div>
+          </div>
+        )}
+        <FormMessage state={state} />
+      </div>
     </Section>
   );
 }
