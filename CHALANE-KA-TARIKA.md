@@ -27,6 +27,8 @@ Zip ko kisi folder mein extract karein, jaise `D:\dineflow`. Fir us folder mein 
 
 ### 3. Database banayein
 
+**Supabase use kar rahe ho to ye step chhod dein.** Supabase mein database pehle se bana hota hai. Seedha step 4 par jaayein aur Supabase ke URL `.env` mein daalein (section B ka step 1 dekhein).
+
 pgAdmin (PostgreSQL ke saath aata hai) mein ek naya database `restaurant` naam se banayein. Ya terminal se ye command chalayein:
 
 ```bash
@@ -172,6 +174,8 @@ Har restaurant apna Razorpay, UPI, WhatsApp aur GST apne dashboard ki **Settings
 |---|---|
 | `Can't reach database server` | PostgreSQL chalu hai? `.env` mein password aur port (5432) sahi hai? |
 | `AUTH_SECRET is not set` | `.env` file usi folder mein hai aur naam bilkul `.env` hai (`.env.txt` nahi) |
+| `createdb` is not recognized | Ye PostgreSQL ki command hai. Supabase use kar rahe ho to iski zaroorat nahi, step 3 chhod dein |
+| `npm` par "running scripts is disabled on this system" (PowerShell) | `npm` ki jagah `npm.cmd` likhein, ya PowerShell ki jagah Command Prompt (cmd) use karein |
 | Port 3000 busy | `npm start -- -p 3001` chalayein, phir `http://localhost:3001` kholein |
 | Login par "too many attempts" | 15 minute ruk jaayein (brute-force suraksha) |
 | Forgot password ka OTP nahi aaya | Testing mein `OTP_DEV_LOG="1"` rakhein, OTP terminal mein dikhega |
